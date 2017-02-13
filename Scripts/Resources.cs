@@ -5,20 +5,44 @@ public class Resources : MonoBehaviour
 {
     public float resourcesRemaining;
     public List<Worker> workerSlots;
-    public string resourceType;
+    public resource resourceType;
     public float gatherTime;
     public int gatherAmount;
     public int numberOfSlots;
+    [HideInInspector]
+    public int tempWorkers;
+
+    //float halfSecondTimer = 0f;
+
+    //void Update()
+    //{
+    //    halfSecondTimer += Time.deltaTime;
+
+    //    if(halfSecondTimer > 0.5f)
+    //    {
+
+    //    }
+    //}
 
     void Awake()
     {
+        AdjustGatherAmount();
     }
 
     public virtual void ReduceResources(float amount)
     {
-            resourcesRemaining -= amount;
-            if (resourcesRemaining <= 0)
-                gameObject.SetActive(false);
+        resourcesRemaining -= amount;
+        if (resourcesRemaining <= 0)
+        {
+            gameObject.SetActive(false);
+            if (GameManager.instance.currentResource == this)
+                GameManager.instance.RemoveHighlightedResource();
+        }
+    }
+
+    public void AdjustGatherAmount()
+    {
+        gatherAmount = (int)Mathf.Round(gatherAmount * GameManager.instance.gatherMult);
     }
 
     public bool AreSlotsAvailable(int amount)

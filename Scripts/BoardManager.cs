@@ -30,9 +30,12 @@ public class BoardManager : MonoBehaviour
     public GameObject[] playerBase;
     public GameObject[] stoneTiles;
     public GameObject gold;
+    public GameObject[] Castle;
 
+    public GameObject homeBase;
     private Transform boardHolder;
-    private List<Vector3> gridPositions = new List<Vector3>();
+    public List<Vector2> gridPositions = new List<Vector2>();
+    public Vector2 marker;
 
     void initialiseList()
     {
@@ -41,7 +44,7 @@ public class BoardManager : MonoBehaviour
         {
             for (int y = 0; y < rows + 1; y++)
             {
-                gridPositions.Add(new Vector3(x, y, 0f));
+                gridPositions.Add(new Vector2(x, y));
             }
         }
     }
@@ -54,18 +57,31 @@ public class BoardManager : MonoBehaviour
             for (int y = 0; y < rows + 1; y++)
             {
                 GameObject toInstantiate = grassTiles[Random.Range(0, grassTiles.Length)];
-                GameObject instance = Instantiate(toInstantiate, new Vector3(x, y, 0f), Quaternion.identity) as GameObject;
+                GameObject instance = Instantiate(toInstantiate, new Vector2(x, y), Quaternion.identity) as GameObject;
                 instance.transform.SetParent(boardHolder);
             }
         }
     }
 
-    Vector3 RandomPosition()
+    Vector2 RandomPosition()
     {
         int randomIndex = Random.Range(0, gridPositions.Count);
-        Vector3 randomPosition = gridPositions[randomIndex];
+        Vector2 randomPosition = gridPositions[randomIndex];
         gridPositions.RemoveAt(randomIndex);
         return randomPosition;
+    }
+
+    Vector2 GetRandomBorderPosition()
+    {
+        int randomIndex = Random.Range(0, gridPositions.Count);
+        Vector2 retVal = gridPositions[randomIndex];
+        while (retVal.x != 0f && retVal.y != 0f && retVal.x != columns && retVal.y != rows)
+        {
+            randomIndex = Random.Range(0, gridPositions.Count);
+            retVal = gridPositions[randomIndex];
+        }
+        gridPositions.RemoveAt(randomIndex);
+        return retVal;
     }
 
     void layoutObjectAtRandom(GameObject[] tileArray, int min, int max)
@@ -73,7 +89,7 @@ public class BoardManager : MonoBehaviour
         int objectCount = Random.Range(min, max + 1);
         for (int y = 0; y < objectCount; y++)
         {
-            Vector3 randomPostion = RandomPosition();
+            Vector2 randomPostion = RandomPosition();
             GameObject tileChoice = tileArray[Random.Range(0, tileArray.Length)];
             Instantiate(tileChoice, randomPostion, Quaternion.identity);
         }
@@ -83,7 +99,7 @@ public class BoardManager : MonoBehaviour
     {
         int gridPos = (int)(trans.position.x * trans.position.y);
         int randomIndex;
-        Vector3 randomPos;
+        Vector2 randomPos;
         bool acceptable = false;
         int i = 0;
         int distance = 2;
@@ -106,6 +122,13 @@ public class BoardManager : MonoBehaviour
         Instantiate(gold, randomPos, Quaternion.identity);
     }
 
+    void PlaceMarker(Vector2 position, GameObject gold)
+    {
+        Instantiate(gold, position, Quaternion.identity);
+    }
+
+
+
     Transform GetTransform (string tag)
     {
         GameObject house = GameObject.FindGameObjectWithTag(tag);
@@ -116,12 +139,14 @@ public class BoardManager : MonoBehaviour
     {
         BoardSetup();
         initialiseList();
+        marker = GetRandomBorderPosition();
         layoutObjectAtRandom(waterTiles, waterCount.minimum, waterCount.maximum);
         layoutObjectAtRandom(stoneTiles, stoneCount.minimum, stoneCount.maximum);
         layoutObjectAtRandom(treeTiles, treeCount.minimum, treeCount.maximum);
         layoutObjectAtRandom(mountainTiles, mountainCount.minimum, mountainCount.maximum);
-        layoutObjectAtRandom(playerBase, 1, 1);
+        layoutObjectAtRandom(Castle, 1, 1);
         Transform trans = GetTransform("Building");
+        homeBase = GameObject.FindGameObjectWithTag("Building");
         PlaceGoldInOppositeCorner(trans, gold);
     }
 }

@@ -1,22 +1,31 @@
 ﻿using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
-public class Worker : MonoBehaviour
+public class Worker : Entity
 {
     public Resources targetResource;
     public bool gathering;
     [HideInInspector] public float heldResourceAmount = 0;
     public bool cancel;
+    public float moveSpeed = .5f;
+    public bool destroy;
 
-    private SpriteRenderer sprite;
-    private Animator anim;
-    private float moveSpeed = .5f;
-    private BoxCollider2D boxCollider;
-    private Rigidbody2D rb2D;
+    public SpriteRenderer sprite;
+    public Animator anim;
+    private float baseMoveSpeed = .5f;
+    public BoxCollider2D boxCollider;
+    public Rigidbody2D rb2D;
     private float gatherTimer = 0;
     private int gatherCounter = 0;
-    
-    //private string heldResourceType;
+    //float pathDistance;
+    public List<Vector2> path;
+    GameObject[] buildings;
+    GameObject closestBuilding;
+    int targetIndex;
+
+
+    private resource heldResourceType;
 
     // Use this for initialization
     void Awake()
@@ -26,34 +35,74 @@ public class Worker : MonoBehaviour
         boxCollider = GetComponent<BoxCollider2D>();
         rb2D = GetComponent<Rigidbody2D>();
         anim.SetBool("WorkerGather", false);
-        targetResource = null;
-        gathering = false;
-        cancel = false;
+        path = new List<Vector2>();
+        UpdateMoveSpeed(GameManager.instance.speedMult);
     }
 
-    public void Move(Transform destination)
+    public void Init(List<Vector2> passedPath)
     {
-        IsMovingAnimation(true);
-        float xDir = 0, yDir = 0;
-        xDir = destination.position.x - transform.position.x;
-        yDir = destination.position.y - transform.position.y;    
+        gathering = false;
+        cancel = false;
+        destroy = false;
+        path.Clear();
+        MoveToTargetResource(passedPath);
+        //PathRequestManager.RequestPath(transform.position, targetResource.transform.position, OnPathFound);
+    }
 
-        //flip sprite if moving right
-        if (xDir > 0)
-            sprite.flipX = true;
+    //public void OnPathFound(List<Vector2> newPath, bool pathSuccessful, float distance)
+    //{
+    //    if (pathSuccessful)
+    //    {
+    //        path = newPath;
+    //        Move(path);
+    //        IsMovingAnimation(true);
+    //    }
+    //    else
+    //    {
+    //        DestroyObject(this);
+    //    }
+    //}
+
+    public void Move(List<Vector2> destinations)
+    {
+        if(destinations.Count > 0)
+        {
+            IsMovingAnimation(true);
+            foreach (Vector2 destination in destinations)
+            {
+                StartCoroutine(SmoothMovement(destination));
+            }
+        }
         else
-            sprite.flipX = false;
-        
-        StartCoroutine(SmoothMovement(destination.position));
+        {
+            DestroyObject(this);
+        }
+    }
 
+    public void UpdateMoveSpeed( float multiplier)
+    {
+        moveSpeed = multiplier * baseMoveSpeed;
     }
 
     protected IEnumerator SmoothMovement (Vector3 end )
     {
+        float xDir = 0, yDir = 0;
+        
+
         float squRemainingDistance = (transform.position - end).sqrMagnitude;
         float totalDistance = squRemainingDistance;
+
         while(squRemainingDistance > float.Epsilon)
         {
+            xDir = end.x - transform.position.x;
+            yDir = end.y - transform.position.y;
+
+            //flip sprite if moving right
+            if (xDir > 0)
+                sprite.flipX = true;
+            else
+                sprite.flipX = false;
+
             Vector3 newPosition = Vector3.MoveTowards(rb2D.position, end, moveSpeed * Time.deltaTime);
             rb2D.MovePosition(newPosition);
             squRemainingDistance = (transform.position - end).sqrMagnitude;                
@@ -62,9 +111,11 @@ public class Worker : MonoBehaviour
         }
     }
 
-    private void Gathering()
+    private void Gather()
     {
-        if(targetResource.resourceType != "Building")
+        IsMovingAnimation(false);
+        path.Clear();
+        if(targetResource.resourceType != resource.building)
         {
             if (gatherTimer >= gatherCounter)
             {
@@ -73,40 +124,28 @@ public class Worker : MonoBehaviour
                 gatherCounter++;
                 if (gatherTimer >= targetResource.gatherTime)
                 {
-                    Move(FindClosestBuilding().transform);
-                    IsMovingAnimation(true);
                     heldResourceAmount = targetResource.gatherAmount;
-                    //targetResource.ReduceResources(targetResource.gatherAmount);
+                    gathering = false;
                 }
-            }
-            else if (targetResource.resourcesRemaining <= 0)
-            {
-                Move(FindClosestBuilding().transform);
-                IsMovingAnimation(true);
+                if (heldResourceAmount > 0)
+                    heldResourceType = targetResource.resourceType;
             }
         }
-        else if (targetResource.resourceType == "Building")
+        else if (targetResource.resourceType == resource.building)
         {
             if(gatherTimer >= targetResource.gatherTime)
             {
                 targetResource.ReduceResources(targetResource.gatherAmount);
                 gatherTimer = 0;
             }
-            else if (targetResource.resourcesRemaining <= 0)
-            {
-                Move(FindClosestBuilding().transform);
-                IsMovingAnimation(true);
-            }
         }
-
     }
 
-    private void IsMovingAnimation(bool moving)
+    public void IsMovingAnimation(bool moving)
     {
         if (moving)
         {
             anim.SetBool("WorkerGather", false);
-            gathering = false;
             gatherTimer = 0;
             gatherCounter = 1;
         }
@@ -114,51 +153,117 @@ public class Worker : MonoBehaviour
             anim.SetBool("WorkerGather", true);
     }
 
-    private GameObject FindClosestBuilding()
+    public void MoveToTargetResource()
     {
-        GameObject[] buildings;
-        GameObject closestBuilding = null;
-
+        gathering = false;
+        StopAllCoroutines();
+        path.Clear();
         buildings = GameObject.FindGameObjectsWithTag("Building");
-
-        foreach (GameObject building in buildings)
+        closestBuilding = GameManager.instance.GetClosestBuilding(buildings, targetResource.transform.position, false, out path);
+        if (path != null)
         {
-            if (closestBuilding == null)
-                closestBuilding = building;
-            else if ((transform.position - building.transform.position).sqrMagnitude < (transform.position - closestBuilding.transform.position).sqrMagnitude)
-                closestBuilding = building;
+            Move(path);
+            IsMovingAnimation(true);
         }
-        return closestBuilding;
+        else
+        {
+            Cancel();
+        }
+    }
+
+    public void MoveToTargetResource(List<Vector2> passedPath)
+    {
+        gathering = false;
+        StopAllCoroutines();
+        path = passedPath;
+        if (path != null)
+        {
+            Move(path);
+            IsMovingAnimation(true);
+        }
+    }
+
+    public void MoveToNearestBuilding()
+    {
+        gathering = false;
+        StopAllCoroutines();
+        path.Clear();
+        buildings = GameObject.FindGameObjectsWithTag("Building");
+        closestBuilding = GameManager.instance.GetClosestBuilding(buildings, transform.position, true, out path);
+        if (path != null)
+        {
+            Move(path);
+            IsMovingAnimation(true);
+        }
+    }
+
+    void DepositResources()
+    {
+        
+        GameManager.instance.AddResources(new KeyValuePair<resource, int>(heldResourceType, (int)heldResourceAmount));
+        heldResourceAmount = 0;
     }
 
     public void Cancel()
     {
-        if (gameObject.activeSelf)
-        {
-            cancel = true;
-            StopAllCoroutines();
-            Move(FindClosestBuilding().transform);
-            IsMovingAnimation(true);
+        StopAllCoroutines();
+        path.Clear();
+        gathering = false;
+        cancel = true;
+        if(targetResource != null)
+        { 
+            targetResource.workerSlots.Remove(this);
         }
     }
 	
 	void Update ()
     {
 
-	    if(targetResource != null && !cancel)
+        if(!gathering && path.Count <= 0)
         {
-            if (gathering)
+            if((targetResource != null && targetResource.gatherAmount == heldResourceAmount) || cancel)
             {
-                gatherTimer += Time.deltaTime;
-                Gathering();
-
+                MoveToNearestBuilding();
             }
-            else if ((transform.position - targetResource.transform.position).sqrMagnitude < float.Epsilon && heldResourceAmount < targetResource.gatherAmount)
+            else
             {
-
-                gathering = true;
-                IsMovingAnimation(false);
+                MoveToTargetResource();
             }
         }
-	}
+        else if (targetResource != null && (targetResource.transform.position - transform.position).sqrMagnitude < float.Epsilon && !gathering)
+        {
+            gathering = true;
+        }
+        else if (gathering && heldResourceAmount != targetResource.gatherAmount)
+        {
+            if(targetResource.resourcesRemaining <= 0)
+            {
+                Cancel();
+            }
+            else
+            {
+                Gather();
+                gatherTimer += Time.deltaTime;
+            }
+        }
+
+        if (closestBuilding != null && (closestBuilding.transform.position - transform.position).sqrMagnitude < float.Epsilon)
+        {
+            if(heldResourceAmount > 0)
+            {
+                DepositResources();
+            }
+            if (cancel || targetResource == null)
+                destroy = true;
+            else if (targetResource.resourcesRemaining <= 0)
+            {
+                Cancel();
+                destroy = true;
+            }
+            else if ((closestBuilding.transform.position - transform.position).sqrMagnitude < float.Epsilon)
+            {
+                MoveToTargetResource();
+            }
+        }
+    }
 }

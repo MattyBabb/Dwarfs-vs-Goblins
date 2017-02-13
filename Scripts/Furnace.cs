@@ -6,15 +6,15 @@ public class Furnace : Resources {
     public override void ReduceResources(float amount)
     {
         
-        if(GameManager.instance.oreAmount >= 6)
+        if(GameManager.resources[resource.ore] >= 6)
         {
-            GameManager.instance.oreAmount -= (int)amount;
-            GameManager.instance.metalAmount += (int)(amount / 3);
+            GameManager.resources[resource.ore] -= (int)amount;
+            GameManager.resources[resource.metal] += (int)(amount / 3);
         }
         else
         {
-            GameManager.instance.oreAmount = 0;
-            GameManager.instance.metalAmount += 1;
+            GameManager.resources[resource.ore] = 0;
+            GameManager.resources[resource.metal] += 1;
             workerSlots[0].Cancel();
         }
     }
