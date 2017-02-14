@@ -81,7 +81,7 @@ public class GameManager : MonoBehaviour
     int numberofBuildingsPurchaseable;
     PathRequestManager requestManager;
     public static Dictionary<resource, int> resources = new Dictionary<resource, int>();
-
+    public static Dictionary<resource, float> resourceUpgrades = new Dictionary<resource, float>();
     void Awake()
     {
         if (instance == null)
@@ -121,6 +121,10 @@ public class GameManager : MonoBehaviour
         resources[resource.stone] = 0;
         resources[resource.ore] = 0;
         resources[resource.building] = 0;
+        foreach (resource type in Enum.GetValues(typeof(resource)))
+        {
+            resourceUpgrades[type] = 1f;
+        }
         PrintResources();
         PrintWorkers();
         gameTime = 0;
