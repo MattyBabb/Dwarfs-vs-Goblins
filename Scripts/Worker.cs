@@ -5,9 +5,8 @@ using System.Collections.Generic;
 public class Worker : Entity
 {
     public Resources targetResource;
-    public bool gathering;
+    public bool gathering, movingToResource, movingHome, cancel;
     [HideInInspector] public float heldResourceAmount = 0;
-    public bool cancel;
     public float moveSpeed = .5f;
     public bool destroy;
 
@@ -113,31 +112,23 @@ public class Worker : Entity
 
     private void Gather()
     {
-        IsMovingAnimation(false);
-        path.Clear();
         if(targetResource.resourceType != resource.building)
         {
-            if (gatherTimer >= gatherCounter)
-            {
-                heldResourceAmount = (targetResource.gatherAmount / (targetResource.gatherTime / gatherCounter));
-                targetResource.ReduceResources((targetResource.gatherAmount / (targetResource.gatherTime)));
-                gatherCounter++;
-                if (gatherTimer >= targetResource.gatherTime)
-                {
-                    heldResourceAmount = targetResource.gatherAmount;
-                    gathering = false;
-                }
-                if (heldResourceAmount > 0)
-                    heldResourceType = targetResource.resourceType;
-            }
+			heldResourceAmount = (targetResource.gatherAmount / (targetResource.gatherTime / gatherCounter));
+			targetResource.ReduceResources((targetResource.gatherAmount / (targetResource.gatherTime)));
+			if (gatherTimer >= targetResource.gatherTime)
+			{
+				heldResourceAmount = targetResource.gatherAmount;
+				gathering = false;
+				movingHome = true;
+			}
+			if (heldResourceAmount > 0)
+				heldResourceType = targetResource.resourceType;
         }
         else if (targetResource.resourceType == resource.building)
         {
-            if(gatherTimer >= targetResource.gatherTime)
-            {
-                targetResource.ReduceResources(targetResource.gatherAmount);
-                gatherTimer = 0;
-            }
+			targetResource.ReduceResources(targetResource.gatherAmount);
+			gatherTimer = 0;
         }
     }
 
@@ -195,6 +186,8 @@ public class Worker : Entity
             Move(path);
             IsMovingAnimation(true);
         }
+		else
+			Cancel();
     }
 
     void DepositResources()
@@ -221,7 +214,7 @@ public class Worker : Entity
 
         if(!gathering && path.Count <= 0)
         {
-            if((targetResource != null && targetResource.gatherAmount == heldResourceAmount) || cancel)
+            if(movingHome || cancel)
             {
                 MoveToNearestBuilding();
             }
@@ -230,9 +223,12 @@ public class Worker : Entity
                 MoveToTargetResource();
             }
         }
-        else if (targetResource != null && (targetResource.transform.position - transform.position).sqrMagnitude < float.Epsilon && !gathering)
+        else if (movingToResource && (targetResource.transform.position - transform.position).sqrMagnitude < float.Epsilon && !gathering)
         {
             gathering = true;
+			movingToResource = false;
+			IsMovingAnimation(false);
+			path.Clear();
         }
         else if (gathering && heldResourceAmount != targetResource.gatherAmount)
         {
@@ -242,18 +238,22 @@ public class Worker : Entity
             }
             else
             {
-                Gather();
                 gatherTimer += Time.deltaTime;
+				if(gatherTimer >= gatherCounter)
+				{
+					gatherCounter++;
+					Gather();
+				}
             }
         }
 
-        if (closestBuilding != null && (closestBuilding.transform.position - transform.position).sqrMagnitude < float.Epsilon)
+        if (movingHome && (closestBuilding.transform.position - transform.position).sqrMagnitude < float.Epsilon)
         {
             if(heldResourceAmount > 0)
             {
                 DepositResources();
             }
-            if (cancel || targetResource == null)
+            if (cancel)
                 destroy = true;
             else if (targetResource.resourcesRemaining <= 0)
             {
