@@ -7,9 +7,12 @@ public class ConstructionSite : Resources
 {
     public GameObject Building;
     public string function;
-    public string name;
+    public new string name;
     public int[] costs;
     public resource[] types;
+    List<GameObject> resources;
+
+    
 
     //void Awake()
     //{
@@ -31,7 +34,33 @@ public class ConstructionSite : Resources
         if (resourcesRemaining <= 0)
         {
             gameObject.SetActive(false);
-            GameObject instance = Instantiate(Building, transform.position, Quaternion.identity) as GameObject;
+            Instantiate(Building, transform.position, Quaternion.identity);
+            resources = new List<GameObject>(GameObject.FindGameObjectsWithTag("Resource"));
+            resources.Sort((v1, v2) => (v1.transform.position - transform.position).sqrMagnitude.CompareTo((v2.transform.position - transform.position).sqrMagnitude));
+
+            Resources tempResource;
+            if (name == "House")
+            {
+                foreach(GameObject location in resources)
+                {
+                    tempResource = location.GetComponent<Resources>();
+                    if(tempResource.path.Count > 0)
+                    {
+                        tempResource.RequestPath();
+                    }
+                }
+            }
+            else
+            {
+                foreach (GameObject location in resources)
+                {
+                    tempResource = location.GetComponent<Resources>();
+                    if (tempResource.path.Count > 0)
+                    {
+                        tempResource.ValidatePath();
+                    }
+                }
+            }
             for (int i = workerSlots.Count - 1; i >= 0; i--)
             {
                 workerSlots[i].Cancel();

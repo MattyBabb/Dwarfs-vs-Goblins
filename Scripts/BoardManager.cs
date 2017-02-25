@@ -97,7 +97,7 @@ public class BoardManager : MonoBehaviour
 
     void PlaceGoldInOppositeCorner(Transform trans, GameObject gold)
     {
-        int gridPos = (int)(trans.position.x * trans.position.y);
+        //int gridPos = (int)(trans.position.x * trans.position.y);
         int randomIndex;
         Vector2 randomPos;
         bool acceptable = false;

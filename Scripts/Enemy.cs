@@ -44,31 +44,31 @@ public class Enemy : Worker
         }
 	}
 
-    public new void Move(List<Vector3> destinations)
-    {
+    //public new void Move(List<Vector3> destinations)
+    //{
         
-        RaycastHit2D hit;
-        if (destinations.Count > 0)
-        {
-            IsMovingAnimation(true);
-            foreach (Vector3 destination in destinations)
-            {
-                hit = Physics2D.Raycast(destination, -Vector2.up);
-                if (hit.collider != null && target == null)
-                {
-                    StartCoroutine(SmoothMovement(destination));
-                    //move up to object, attack it, destroy it and then continue moving along path
-                    target = hit.collider.gameObject;
-                }
-                else
-                    StartCoroutine(SmoothMovement(destination));
-            }
-        }
-        else
-        {
-            DestroyObject(this);
-        }
-    }
+    //    RaycastHit2D hit;
+    //    if (destinations.Count > 0)
+    //    {
+    //        IsMovingAnimation(true);
+    //        foreach (Vector3 destination in destinations)
+    //        {
+    //            hit = Physics2D.Raycast(destination, -Vector2.up);
+    //            if (hit.collider != null && target == null)
+    //            {
+    //                StartCoroutine(SmoothMovement(destination));
+    //                //move up to object, attack it, destroy it and then continue moving along path
+    //                target = hit.collider.gameObject;
+    //            }
+    //            else
+    //                StartCoroutine(SmoothMovement(destination));
+    //        }
+    //    }
+    //    else
+    //    {
+    //        DestroyObject(this);
+    //    }
+    //}
 
     GameObject GetClosestWorker()
     {

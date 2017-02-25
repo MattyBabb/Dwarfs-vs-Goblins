@@ -31,14 +31,14 @@ public class GameManager : MonoBehaviour
     public Sprite filledWorker;
     public Sprite EmptyWorker;
     public GameObject highlightBox;
+    public GameObject tradeRouteGO;
+    public float startingCameraSize;
+    public float currentCameraSize;
 
     private float eatCycle = 10;
     private float eatTimer = 0.0f;
     public List<Worker> workers;
     private int totalWorkers = 8;
-    private float workerTimer = .5f;
-    private float workerTick = .5f;
-    private float stealerTimer = 0f;
     private int workerCount;
     private float oneSecondTimer = 0f;
     private float halfSecondTimer = 0f;
@@ -50,13 +50,11 @@ public class GameManager : MonoBehaviour
     private Text buildingInfoText;
     private Slider foodSlider;
     private Text sliderText;
-    private GameObject[] buildings;
+    public GameObject[] buildings;
     private bool constructingBuilding;
-    private bool displayBuildingInfo = false;
     public Resources currentResource;
     private GameObject currentBuildingtoBuild;
     private ConstructionSite buildingDetails;
-    private Rect highlightResource;
     private GameObject highlightedBox;
     private int gameTime;
     private IEnumerator coroutine;
@@ -70,18 +68,20 @@ public class GameManager : MonoBehaviour
     float maxFov = 15f;
     float sensitivity = 10f;
     float scrollSensitivity = 1f;
-    Vector2 startingMouse;
-    float dragSpeed = 2.0f;
-    Vector2 cameraOffset;
-    RaycastHit2D cameraOffsetRay;
     float mouseScroll;
     float pathDistance;
     Vector2 dragStartPosition;
     List<GameObject> previewWallGameObjects;
-    int numberofBuildingsPurchaseable;
+    int numberofBuildingsPurchaseable;  
     PathRequestManager requestManager;
     public static Dictionary<resource, int> resources = new Dictionary<resource, int>();
-    public static Dictionary<resource, float> resourceUpgrades = new Dictionary<resource, float>();
+    Vector2[] tradeRouteDestinations;
+    List<int[]> tradeRouteCostAmounts;
+    List<resource[]> tradeRouteCostTypes;
+    List<int[]> tradeRouteDeliverAmounts;
+    List<resource[]> tradeRouteDeliverTypes;
+
+
     void Awake()
     {
         if (instance == null)
@@ -97,7 +97,8 @@ public class GameManager : MonoBehaviour
         Instantiate(highlightBox, new Vector2(-10, -10), Quaternion.identity);
         highlightedBox = Instantiate(highlightBox, new Vector2(-10, -10), Quaternion.identity) as GameObject;
         //print(highlightBox.GetComponent<SpriteRenderer>().isVisible);
-        
+        startingCameraSize = Camera.main.orthographicSize;
+        currentCameraSize = startingCameraSize;
     }
 
     void InitGame()
@@ -121,19 +122,26 @@ public class GameManager : MonoBehaviour
         resources[resource.stone] = 0;
         resources[resource.ore] = 0;
         resources[resource.building] = 0;
-        foreach (resource type in Enum.GetValues(typeof(resource)))
-        {
-            resourceUpgrades[type] = 1f;
-        }
         PrintResources();
         PrintWorkers();
         gameTime = 0;
         requestManager = GetComponent<PathRequestManager>();
 
-
         //FindPath(boardScript.marker, GetClosestBuilding(buildings, boardScript.marker).transform.position);
         SimplePool.Preload(worker, 100);
         SimplePool.Preload(wall, 100);
+
+        //this should come from the board manager, not hard coded like it is here
+        tradeRouteCostAmounts = new List<int[]>();
+        tradeRouteCostTypes = new List<resource[]>();
+        tradeRouteDeliverAmounts = new List<int[]>();
+        tradeRouteDeliverTypes = new List<resource[]>();
+
+        tradeRouteCostAmounts.Add(new int[] { 50,20});
+        tradeRouteCostTypes.Add(new resource[] { resource.food, resource.wood });
+        tradeRouteDeliverTypes.Add(new resource[] { resource.gold, resource.metal });
+        tradeRouteDeliverAmounts.Add(new int[] { 50, 30 });
+        tradeRouteDestinations = new Vector2[] { new Vector2(1,1) };
     }
 
     void Update()
@@ -289,6 +297,7 @@ public class GameManager : MonoBehaviour
             float fov = Camera.main.orthographicSize;
             fov -= Input.GetAxis("Mouse ScrollWheel") * sensitivity;
             fov = Mathf.Clamp(fov, minFov, maxFov);
+            currentCameraSize = fov;
             Camera.main.orthographicSize = fov;
             scrollSensitivity = fov/10;
         }
@@ -308,7 +317,7 @@ public class GameManager : MonoBehaviour
 
         if (halfSecondTimer >= 0.5)
         {
-            ProcessWorkers();
+            //ProcessWorkers();
             halfSecondTimer = 0;
 
             //cancels worker if one too many has been created
@@ -327,30 +336,27 @@ public class GameManager : MonoBehaviour
                     
                 else if (currentResource.tempWorkers > currentResource.workerSlots.Count)
                 {
-                    GameObject closestBuilding = GetClosestBuilding(buildings, currentResource.transform.position, false, out path);
+                    //GameObject closestBuilding = GetClosestBuilding(buildings, currentResource.transform.position, false, out path);
+                    Vector2 closestBuilding = GetCloseBuilding(currentResource.transform.position);
                     Worker closestCancelledWorker = GetClosestCancelledWorker(currentResource);
                     if (closestCancelledWorker != null && closestCancelledWorker.heldResourceAmount == 0)
                     {
                         float workerDistance, buildingDistance;
 
-                        workerDistance = GetDistance(closestCancelledWorker.transform.position, currentResource.transform.position);
+                        workerDistance = GetDistance(closestCancelledWorker.transform.position, currentResource.transform.position)/10;
                         buildingDistance = GetBuildingDistance(buildings, currentResource.transform.position);
 
                         if (workerDistance < buildingDistance)
                         {
-                            List<Vector2> workerPath = new List<Vector2>();
-                            workerPath = GetFastestPath(new Vector2[] { closestCancelledWorker.transform.position }, currentResource.transform.position, false , out workerDistance);
                             closestCancelledWorker.StopAllCoroutines();
-                            closestCancelledWorker.Init(workerPath);
                             closestCancelledWorker.targetResource = currentResource;
-                            //closestCancelledWorker.Move(workerPath);
-                            //closestCancelledWorker.path = workerPath;
+                            closestCancelledWorker.Uncancel();
                             currentResource.AddWorkerToSlot(closestCancelledWorker);
                         }
 
                     }
-                    else if (closestBuilding != null)
-                        CreateWorkers(currentResource, currentResource.workerSlots.Count + 1, path, closestBuilding);
+                    else if (closestBuilding != new Vector2(0,0))
+                        CreateWorkers(currentResource, currentResource.workerSlots.Count + 1);
                 }
             }
         }
@@ -365,7 +371,7 @@ public class GameManager : MonoBehaviour
 
     }
 
-    bool IsPurchaseable(KeyValuePair<resource,int> pair)
+    public bool IsPurchaseable(KeyValuePair<resource,int> pair)
     {
         if(resources[pair.Key] < pair.Value)
         {
@@ -485,7 +491,7 @@ public class GameManager : MonoBehaviour
                 }
             }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 320, 130, 30), "Build Tower"))
+            if (GUI.Button(new Rect(Screen.width - 130, 310, 130, 30), "Build Tower"))
             {
 
                 if (BuildingPurchaseable(tower))
@@ -499,8 +505,31 @@ public class GameManager : MonoBehaviour
                     StartCoroutine(FlashText(resourceText, 0.5f, "\nInsufficient Resources"));
                 }
             }
+            if (GUI.Button(new Rect(Screen.width - 130, 350, 130, 30), "Start Trade Route"))
+            {
+                for (int i = 0; i < tradeRouteDestinations.Length; i++)
+                {
+                    bool valid = true;
+                    for (int j = 0; j < tradeRouteCostAmounts[i].Length; j++)
+                    {
+                        if (!IsPurchaseable(new KeyValuePair<resource, int>(tradeRouteCostTypes[i][j], tradeRouteCostAmounts[i][j])))
+                        {
+                            valid = false;
+                        }
+                    }
+                    if (valid)
+                    {
+                        GameObject instance = Instantiate(tradeRouteGO, boardScript.homeBase.transform.position, Quaternion.identity) as GameObject;
+                        TradeRoute theTradeRoute = instance.GetComponent<TradeRoute>();
+                        theTradeRoute.Init(tradeRouteDestinations[i], tradeRouteCostAmounts[i], tradeRouteCostTypes[i], tradeRouteDeliverAmounts[i], tradeRouteDeliverTypes[i], 5);
+                    }
+                        
+                }
+                //instantiate Trade Route here!!!
+                
+            }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 380, 130, 30), "Inc. Gather Amount") && resources[resource.food] >= 0 && resources[resource.gold] >= 0)
+            if (GUI.Button(new Rect(Screen.width - 130, 410, 130, 30), "Inc. Gather Amount") && resources[resource.food] >= 0 && resources[resource.gold] >= 0)
             {
                 resources[resource.food] -= 0;
                 resources[resource.gold] -= 0;
@@ -510,7 +539,7 @@ public class GameManager : MonoBehaviour
                 PrintResources();
             }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 420, 130, 30), "Inc. Move Speed") && resources[resource.food] >= 0 && resources[resource.gold] >= 0)
+            if (GUI.Button(new Rect(Screen.width - 130, 450, 130, 30), "Inc. Move Speed") && resources[resource.food] >= 0 && resources[resource.gold] >= 0)
             {
                 resources[resource.food] -= 0;
                 resources[resource.gold] -= 0;
@@ -540,7 +569,7 @@ public class GameManager : MonoBehaviour
             {
                 if (currentWorkers >= workerCount)
                 {
-                    if (GUI.Button(new Rect((Screen.width / 2) - 174 + (workerCount * 58), 0, 58, 58), filledWorker.texture, GUIStyle.none))
+                    if (GUI.Button(new Rect((Screen.width / 2) - ((currentResource.numberOfSlots/2 * 58) + 58) + (workerCount * 58), 0, 58, 58), filledWorker.texture, GUIStyle.none))
                     {
                         currentResource.tempWorkers = workerCount - 1;
                         for (int i = currentResource.workerSlots.Count; i >= workerCount; i--)
@@ -552,7 +581,7 @@ public class GameManager : MonoBehaviour
                 else
                 {
 
-                    if (GUI.Button(new Rect((Screen.width / 2) - 174 + (workerCount * 58), 0, 58, 58), EmptyWorker.texture, GUIStyle.none))
+                    if (GUI.Button(new Rect((Screen.width / 2) - ((currentResource.numberOfSlots / 2 * 58) + 58) + (workerCount * 58), 0, 58, 58), EmptyWorker.texture, GUIStyle.none))
                     {
                         int noCancelledWorkers = NumberOfCancelledWorkers();
                         if (workers.Count + workerCount - currentResource.workerSlots.Count <= totalWorkers + noCancelledWorkers)
@@ -640,6 +669,11 @@ public class GameManager : MonoBehaviour
 
     public void RemoveHighlightedResource()
     {
+        if (currentResource != null)
+            if (currentResource.tempWorkers > currentResource.workerSlots.Count)
+            {
+                CreateWorkers(currentResource, currentResource.tempWorkers);
+            }
         highlightedBox.transform.position = new Vector2(-10, -10);
         currentResource = null;
         UpdateHighlightedText(null);
@@ -648,7 +682,7 @@ public class GameManager : MonoBehaviour
     private void CreateConstructionSite(Vector2 clickPosition)
     {
         Vector2 position = new Vector2(Mathf.Round(clickPosition.x), Mathf.Round(clickPosition.y));
-        GameObject instance = Instantiate(currentBuildingtoBuild, position, Quaternion.identity) as GameObject;
+        Instantiate(currentBuildingtoBuild, position, Quaternion.identity);
         ConstructionSite site = currentBuildingtoBuild.GetComponent<ConstructionSite>();
         for (int i = 0; i < site.costs.Length; i++)
         {
@@ -736,38 +770,7 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    public GameObject GetClosestBuilding(GameObject[] buildings, Vector2 position, bool toBuilding, out List<Vector2> path)
-    {
-        buildings = GameObject.FindGameObjectsWithTag("Building");
-        Vector2 currentPos = position;
-        Vector2[] locations = Array.ConvertAll(buildings, item => new Vector2 (item.transform.position.x, item.transform.position.y));
-        float distance;
-        path = GetFastestPath(locations, position, toBuilding, out distance);
-
-        if(path.Count > 0)
-        {
-            RaycastHit2D hit = Physics2D.Raycast(path[path.Count - 1], Vector2.zero);
-            if (hit.collider != null)
-            {
-                if (hit.collider.gameObject.tag == "Building")
-                    return hit.collider.gameObject;
-            }
-            hit = Physics2D.Raycast(path[0], Vector2.zero);
-            if (hit.collider != null)
-            {
-                if (hit.collider.gameObject.tag == "Building")
-                    return hit.collider.gameObject;
-            }
-            else
-            {
-                return null;
-            }
-        }
-
-        return null;
-    }
-
-    private void ProcessWorkers()
+    public void ProcessWorkers()
     {
         Worker worker;
 
@@ -782,37 +785,18 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    public void OnPathFound(List<Vector2> newPath, bool pathSuccessful, float distance)
-    {
-        if (pathSuccessful)
-        {
-            path = newPath;
-            pathDistance = distance;
-        }
-        else
-            path = null;
-        
-    }
-
-    public IEnumerator DoesPathExist(Vector2 end, Vector2 start, int dps)
-    {
-       // path = FindPath(start, end, dps, out pathDistance);
-        yield return new WaitForEndOfFrame();
-    }
-
-    public List<Vector2> GetFastestPath(Vector2[] ends, Vector2 position, bool toBuilding, out float minDistance)
-    {
-        minDistance = Mathf.Infinity;
+    public IEnumerator GetFastestPath(Vector2[] ends, Vector2 position, int dps, bool toBuilding)
+    { 
+        float minDistance = Mathf.Infinity;
         List<Vector2> testPath = new List<Vector2>();
         path = null;
 
         foreach (Vector2 end in ends)
         {
-            if(toBuilding)
-                //StartCoroutine(DoesPathExist(end, position, 0));
-                PathRequestManager.RequestPath(end, position, 0, OnPathFound);
+            if (toBuilding)
+                path = FindPath(end, position, dps, out pathDistance);
             else
-                PathRequestManager.RequestPath(end, position, 0, OnPathFound);
+                path = FindPath(position, end, dps, out pathDistance);
             if (path != null)
             {
                 if (pathDistance < minDistance)
@@ -821,59 +805,73 @@ public class GameManager : MonoBehaviour
                     minDistance = pathDistance;
                 }
             }
+            
         }
-        return testPath;
+        yield return null;
+        if (minDistance != Mathf.Infinity)
+            requestManager.FinishedProcessingPath(testPath, minDistance, true);
     }
 
-    protected IEnumerator CreateAndMoveWorkers(Resources resource, int amount, List<Vector2> path, GameObject closestBuilding)
+    Vector2 GetCloseBuilding(Vector2 resource)
     {
-        //GameObject closestBuilding = GetClosestBuilding(buildings, resource.transform.position);
-        //List<Vector2> path = FindPath(closestBuilding.transform.position, resource.transform.position);
-        if (path != null)
+        buildings = GameObject.FindGameObjectsWithTag("Building");
+        GameObject tMin = null;
+        float minDist = Mathf.Infinity;
+        Vector3 currentPos = resource;
+        foreach (GameObject building in buildings)
         {
-            for (int i = 0; i < amount; i++)
+            float dist = (building.transform.position - currentPos).sqrMagnitude;
+            if (dist < minDist)
             {
-                //instantiate new instance of worker in the house and make them move to the touch position. 
-                GameObject newWorker = /*Instantiate(worker, closestBuilding.transform.position, Quaternion.identity)*/ SimplePool.Spawn(worker, closestBuilding.transform.position, Quaternion.identity) as GameObject;
-                //yield return null;
-                Worker aWorker = newWorker.GetComponent<Worker>();
-                aWorker.Init(path);
-                aWorker.targetResource = resource;
-                workers.Add(aWorker);
-                resource.AddWorkerToSlot(aWorker);
-                PrintWorkers();
-                yield return new WaitForSeconds(0.5f);
+                tMin = building;
+                minDist = dist;
             }
         }
+        return tMin.transform.position;
+    }
 
+    protected IEnumerator CreateAndMoveWorkers(Resources resource, int amount)
+    {
+        for (int i = 0; i < amount; i++)
+        {
+            //instantiate new instance of worker in the house and make them move to the touch position. 
+            GameObject newWorker = SimplePool.Spawn(worker, GetCloseBuilding(resource.transform.position), Quaternion.identity) as GameObject;
+            Worker aWorker = newWorker.GetComponent<Worker>();
+            aWorker.targetResource = resource;
+            aWorker.Init(resource);
+            workers.Add(aWorker);
+            resource.AddWorkerToSlot(aWorker);
+            PrintWorkers();
+            yield return new WaitForSeconds(0.5f);
+        }
         yield return null;
     }
 
-    private void CreateAndMoveStealer(Vector2 location)
-    {
-        List<Vector2> path;
-        GameObject closestBuilding = GetClosestBuilding(buildings, location, false, out path);
-        if (path != null)
-        {
-            //instantiate new instance of worker in the house and make them move to the touch position. 
-            GameObject newStealer = Instantiate(stealer, location, Quaternion.identity) as GameObject;
-            //yield return null;
-            Stealer aStealer = newStealer.GetComponent<Stealer>();
-            aStealer.Move(path);
-            //print stealers
-        }
-    }
+    //private void CreateAndMoveStealer(Vector2 location)
+    //{
+    //    List<Vector2> path;
+    //    GameObject closestBuilding = GetClosestBuilding(buildings, location, false, out path);
+    //    if (path != null)
+    //    {
+    //        //instantiate new instance of worker in the house and make them move to the touch position. 
+    //        GameObject newStealer = Instantiate(stealer, location, Quaternion.identity) as GameObject;
+    //        //yield return null;
+    //        Stealer aStealer = newStealer.GetComponent<Stealer>();
+    //        aStealer.Move(path);
+    //        //print stealers
+    //    }
+    //}
 
-    private void CreateAndMoveEnemy(Vector2 location)
-    {
-            //instantiate new instance of worker in the house and make them move to the touch position. 
-            GameObject newEnemy = Instantiate(enemy, location, Quaternion.identity) as GameObject;
-            //yield return null;
-            Enemy aEnemy = newEnemy.GetComponent<Enemy>();
-           // List<Vector2> path = FindPath(location, boardScript.homeBase.transform.position, aEnemy.attackDamgage, out pathDistance);
-            aEnemy.Move(path);
-            //print enemies
-    }
+    //private void CreateAndMoveEnemy(Vector2 location)
+    //{
+    //    instantiate new instance of worker in the house and make them move to the touch position. 
+    //    GameObject newEnemy = Instantiate(enemy, location, Quaternion.identity) as GameObject;
+    //    yield return null;
+    //    Enemy aEnemy = newEnemy.GetComponent<Enemy>();
+    //    List<Vector2> path = FindPath(location, boardScript.homeBase.transform.position, aEnemy.attackDamgage, out pathDistance);
+    //    aEnemy.Move(path);
+    //    print enemies
+    //}
 
     void UpdateHighlightedText(Resources highlightedResource)
     {
@@ -891,44 +889,48 @@ public class GameManager : MonoBehaviour
         if (currentResource != null)
             if (currentResource.tempWorkers > currentResource.workerSlots.Count)
             {
-                List<Vector2> path;
-                GameObject closestBuilding = GetClosestBuilding(buildings, currentResource.transform.position, true, out path);
-                if(path != null)
-                    CreateWorkers(currentResource, currentResource.tempWorkers, path, closestBuilding);
+               // List<Vector2> path;
+                //GameObject closestBuilding = GetClosestBuilding(buildings, currentResource.transform.position, true, out path);
+                //if(path != null)
+                    CreateWorkers(currentResource, currentResource.tempWorkers);
             }
         Resources resource = clickPosition.transform.gameObject.GetComponent<Resources>();
         currentResource = resource;
+        if(currentResource.path.Count <= 0)
+        {
+            currentResource.RequestPath();
+        }
         //tempWorkers = resource.workerSlots.Count;
         UpdateHighlightedText(resource);
         highlightedBox.transform.position = new Vector2(currentResource.transform.position.x, currentResource.transform.position.y);
         //}
     }
 
-    void CreateWorkers(Resources resource, int amount, List<Vector2> path, GameObject closestBuilding)
+    void CreateWorkers(Resources resource, int amount)
     {
         
         //GameObject closestBuilding = GetClosestBuilding(buildings, resource.transform.position);
         //List<Vector2> path = FindPath(closestBuilding.transform.position, resource.transform.position, 0, out pathDistance);
-        if(path == null)
+        //if(path == null)
+        //{
+        //    currentResource.tempWorkers = 0;
+        //}
+        //else
+        //{
+        if (workers.Count < totalWorkers && resource != null)
         {
-            currentResource.tempWorkers = 0;
-        }
-        else
-        {
-            if (workers.Count < totalWorkers && resource != null)
+            amount = amount - resource.workerSlots.Count;
+            if (resource.AreSlotsAvailable(amount))
             {
-                amount = amount - resource.workerSlots.Count;
-                if (resource.AreSlotsAvailable(amount))
+                if (amount + workers.Count <= totalWorkers)
                 {
-                    if (amount + workers.Count <= totalWorkers)
-                    {
-                        coroutine = CreateAndMoveWorkers(resource, amount, path, closestBuilding);
-                        StartCoroutine(coroutine);
-                        PrintWorkers();
-                    }
+                    coroutine = CreateAndMoveWorkers(resource, amount);
+                    StartCoroutine(coroutine);
+                    PrintWorkers();
                 }
             }
         }
+        //}
     }
 
     int GetDistance(Vector2 start, Vector2 end)
@@ -941,20 +943,19 @@ public class GameManager : MonoBehaviour
         return 14 * dstX + 10 * (dstY - dstX);
     }
 
-    public void StartFindPath(Vector2 startPos, Vector2 targetPos)
+    public void StartFindPath(Vector2 startPos, Vector2[] targetPos, int dps, bool toBuilding) 
     {
-        StartCoroutine(FindPath(startPos, targetPos, 0));
+        StartCoroutine(GetFastestPath(targetPos, startPos, dps, toBuilding));
     }
 
-    IEnumerator /*List<Vector2>*/ FindPath(Vector2 start, Vector2 end, int dps /*,out float distance*/)
+    private List<Vector2> FindPath(Vector2 start, Vector2 end, int dps ,out float distance)
     {
-        float distance = 0;
         bool pathSuccess = false, easyPath = false;
         Stopwatch sw = new Stopwatch();
         sw.Start();
         openNodes = new Heap<Node>((int)(rows * columns));
 
-        List<Vector2> waypoints = new List<Vector2>();
+        List<Vector2> waypoints = new List<Vector2>(); 
 
         RaycastHit2D ray1 = Physics2D.Raycast(start, Vector2.zero);
         RaycastHit2D ray2 = Physics2D.Raycast(end, Vector2.zero);
@@ -990,10 +991,7 @@ public class GameManager : MonoBehaviour
             if (GetDistance(startNode.position, endNode.position) <= 14 || hit.collider == null || new Vector2(hit.collider.transform.position.x, hit.collider.transform.position.y) == end)
             {
                 //Debug.DrawRay(start, end, Color.red, 1000, false);
-                List<Vector2> path = new List<Vector2>();
-                waypoints.Add(end);
-                waypoints.Add(start);
-                distance = GetDistance(start, end) / 10;
+
                 easyPath = true;
                 break;
             }
@@ -1038,22 +1036,27 @@ public class GameManager : MonoBehaviour
           
         closedNodes.Clear();
          sw.Stop();
-        yield return null;
         if (pathSuccess && !easyPath)
         {
             print("path finding ended: " + sw.ElapsedMilliseconds + " ms ");
             waypoints = ReconstructPath(startNode, currentNode, end, out distance);
-            requestManager.FinishedProcessingPath(waypoints, true, distance);
+            return waypoints;
+            //requestManager.FinishedProcessingPath(waypoints, true, distance);
         }
         else if (easyPath)
         {
-            requestManager.FinishedProcessingPath(waypoints, true, distance);
+            waypoints.Add(end);
+            waypoints.Add(start);
+            distance = GetDistance(start, end) / 10;
+            return waypoints;
+            //requestManager.FinishedProcessingPath(waypoints, true, distance);
         }
         else
         {
             distance = Mathf.Infinity;
             print("path finding ended: no path found" + sw.ElapsedMilliseconds + " ms ");
-            requestManager.FinishedProcessingPath(null, false, 0f);
+            return null;
+            //requestManager.FinishedProcessingPath(null, false, 0f);
         }
     }
 
@@ -1062,13 +1065,17 @@ public class GameManager : MonoBehaviour
         List<Vector2> path = new List<Vector2>();
         distance = 0;
         Node currentNode = endNode;
-        path.Add(end);
-        path.Add(endNode.position);
+        
         distance += GetDistance(end, endNode.position);
         Vector2 temp = new Vector2();
         Vector2 tempParent = new Vector2();
         RaycastHit2D hit;
         temp = currentNode.position;
+        path.Add(end);
+        hit = Physics2D.Linecast(temp, end, BlockingLayer);
+        if(hit.collider != null)
+            path.Add(endNode.position);
+        
         path.Add(temp);
         distance += GetDistance(temp, endNode.position);
         //Instantiate(boardScript.gold, temp, Quaternion.identity);
@@ -1113,10 +1120,10 @@ public class GameManager : MonoBehaviour
                     if (ray.collider != null)
                     {
                         string hitTag = ray.collider.gameObject.tag;
-                        if ((hitTag == "Building" || hitTag == "BuildingResource" || hitTag == "Fort") && dps > 0)
+                        if ((hitTag == "Building" || hitTag == "BuildingResource" || hitTag == "Forts") && dps > 0)
                         {
                             Entity entity = ray.collider.gameObject.GetComponent<Entity>();
-                            neighbours.Add(new Node(x, y, entity.hitPoints / dps));
+                            neighbours.Add(new Node(x, y, entity.maxHP / dps));
                         }
                         else if (hitTag == "Resource")
                         {

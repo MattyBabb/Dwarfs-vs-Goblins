@@ -16,9 +16,6 @@ public class Stealer : Worker {
         boxCollider = GetComponent<BoxCollider2D>();
         rb2D = GetComponent<Rigidbody2D>();
         anim.SetBool("WorkerGather", false);
-        targetResource = null;
-        gathering = false;
-        cancel = false;
         //UpdateMoveSpeed(GameManager.instance.speedMult);
     }
 }

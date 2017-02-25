@@ -11,17 +11,15 @@ public class PathRequestManager : MonoBehaviour {
     static PathRequestManager instance;
 
     bool isProcessingPath;
-    GameManager gameManager;
 
     void Awake()
     {
         instance = this;
-        gameManager = GetComponent<GameManager>();
     }
 
-    public static void RequestPath( Vector2 pathStart, Vector2 pathEnd, int dps, Action<List<Vector2>, bool, float> callback)
+    public static void RequestPath( Vector2 pathStart, Vector2[] pathEnds, int dps, bool toBuilding, Action<List<Vector2>, bool, float> callback)
     {
-        PathRequest newRequest = new PathRequest(pathStart, pathEnd, dps, callback);
+        PathRequest newRequest = new PathRequest(pathStart, pathEnds, dps, toBuilding, callback);
         instance.pathRequestQueue.Enqueue(newRequest);
         instance.TryProcessNext();
     }
@@ -32,11 +30,11 @@ public class PathRequestManager : MonoBehaviour {
         {
             currentPathRequest = pathRequestQueue.Dequeue();
             isProcessingPath = true;
-            gameManager.StartFindPath(currentPathRequest.pathStart, currentPathRequest.pathEnd);
+            GameManager.instance.StartFindPath(currentPathRequest.pathStart, currentPathRequest.pathEnds, currentPathRequest.dps, currentPathRequest.toBuilding);
         }
     }
 
-    public void FinishedProcessingPath(List<Vector2> path, bool success, float distance)
+    public void FinishedProcessingPath(List<Vector2> path, float distance, bool success)
     {
         currentPathRequest.callback(path, success, distance);
         isProcessingPath = false;
@@ -46,14 +44,16 @@ public class PathRequestManager : MonoBehaviour {
     struct PathRequest
     {
         public Vector2 pathStart;
-        public Vector2 pathEnd;
+        public Vector2[] pathEnds;
         public int dps;
+        public bool toBuilding;
         public Action<List<Vector2>, bool, float> callback;
 
-        public PathRequest(Vector2 _start, Vector2 _end, int _dps, Action<List<Vector2>, bool, float> _callback)
+        public PathRequest(Vector2 _start, Vector2[] _ends, int _dps, bool _toBuilding,  Action<List<Vector2>, bool, float> _callback)
         {
+            toBuilding = _toBuilding;
             pathStart = _start;
-            pathEnd = _end;
+            pathEnds = _ends;
             dps = _dps;
             callback = _callback;
         }
