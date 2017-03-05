@@ -9,7 +9,22 @@ using System.Diagnostics;
 
 public enum resource
 {
-    wood, food, stone, gold, ore, metal, building
+    wood, food, stone, gold, ore, metal, building, none
+}
+
+enum buildable
+{
+    house, furnace, tower, wall, farm
+}
+
+enum actionMenu
+{
+    nothing, building, upgrading, trading, buildBuilding, startTradeRoute, finaliseUpgrade, upgradingFood, upgradingStone, upgradingGold, upgradingWood, upgradingOre
+}
+
+public enum enemyType
+{
+    stealer, enemy
 }
 
 public class GameManager : MonoBehaviour
@@ -75,12 +90,21 @@ public class GameManager : MonoBehaviour
     int numberofBuildingsPurchaseable;  
     PathRequestManager requestManager;
     public static Dictionary<resource, int> resources = new Dictionary<resource, int>();
+    public static Dictionary<resource, float> resourceUpgrades = new Dictionary<resource, float>();
+    List<GameObject> enemyTypes;
+    float[] enemySpawnDetails;
+    int enemySpawnInt;
+    Vector2[] spawnAreas;
     Vector2[] tradeRouteDestinations;
-    List<int[]> tradeRouteCostAmounts;
-    List<resource[]> tradeRouteCostTypes;
-    List<int[]> tradeRouteDeliverAmounts;
-    List<resource[]> tradeRouteDeliverTypes;
-
+    List<int[]> costAmounts;
+    List<resource[]> costTypes;
+    List<int[]> deliverAmounts;
+    List<resource[]> deliverTypes;
+    buildable[] buildingsBuildable;
+    actionMenu currentMenu;
+    int currentTradeRoute;
+    resource currentUpgrade;
+    resource[] upgradeOrder;
 
     void Awake()
     {
@@ -99,10 +123,29 @@ public class GameManager : MonoBehaviour
         //print(highlightBox.GetComponent<SpriteRenderer>().isVisible);
         startingCameraSize = Camera.main.orthographicSize;
         currentCameraSize = startingCameraSize;
+        
     }
 
     void InitGame()
     {
+        enemySpawnInt = 0;
+        resources[resource.food] = 1000;
+        resources[resource.wood] = 1000;
+        resources[resource.gold] = 0;
+        resources[resource.metal] = 0;
+        resources[resource.stone] = 500;
+        resources[resource.ore] = 0;
+        resources[resource.building] = 0;
+        enemyTypes = new List<GameObject>();
+        enemyTypes.Add(enemy);
+        enemyTypes.Add(stealer);
+        resourceUpgrades[resource.food] = 1;
+        resourceUpgrades[resource.wood] = 1;
+        resourceUpgrades[resource.gold] = 1;
+        resourceUpgrades[resource.metal] = 1;
+        resourceUpgrades[resource.stone] = 1;
+        resourceUpgrades[resource.ore] = 1;
+        resourceUpgrades[resource.building] = 1;
         boardScript.SetupScene();
         columns = boardScript.columns;
         rows = boardScript.rows;
@@ -115,13 +158,7 @@ public class GameManager : MonoBehaviour
         sliderText = GameObject.Find("SliderText").GetComponent<Text>();
         gameTimeText = GameObject.Find("GameTimeText").GetComponent<Text>();
         buildingInfoText = GameObject.Find("BuildingInfoText").GetComponent<Text>();
-        resources[resource.food] = 1000;
-        resources[resource.wood] = 1000;
-        resources[resource.gold] = 0;
-        resources[resource.metal] = 0;
-        resources[resource.stone] = 0;
-        resources[resource.ore] = 0;
-        resources[resource.building] = 0;
+
         PrintResources();
         PrintWorkers();
         gameTime = 0;
@@ -132,16 +169,58 @@ public class GameManager : MonoBehaviour
         SimplePool.Preload(wall, 100);
 
         //this should come from the board manager, not hard coded like it is here
-        tradeRouteCostAmounts = new List<int[]>();
-        tradeRouteCostTypes = new List<resource[]>();
-        tradeRouteDeliverAmounts = new List<int[]>();
-        tradeRouteDeliverTypes = new List<resource[]>();
+        costAmounts = new List<int[]>();
+        costTypes = new List<resource[]>();
+        deliverAmounts = new List<int[]>();
+        deliverTypes = new List<resource[]>();
 
-        tradeRouteCostAmounts.Add(new int[] { 50,20});
-        tradeRouteCostTypes.Add(new resource[] { resource.food, resource.wood });
-        tradeRouteDeliverTypes.Add(new resource[] { resource.gold, resource.metal });
-        tradeRouteDeliverAmounts.Add(new int[] { 50, 30 });
-        tradeRouteDestinations = new Vector2[] { new Vector2(1,1) };
+        costAmounts.Add(new int[] { 50,20});
+        costTypes.Add(new resource[] { resource.food, resource.wood });
+        deliverTypes.Add(new resource[] { resource.gold, resource.metal });
+        deliverAmounts.Add(new int[] { 50, 30 });
+
+        costAmounts.Add(new int[] { 50, 20 });
+        costTypes.Add(new resource[] { resource.gold, resource.metal });
+        deliverTypes.Add(new resource[] { resource.food, resource.wood });
+        deliverAmounts.Add(new int[] { 50, 30 });
+        //tradeRouteDestinations[1] = new Vector2(boardScript.rows, boardScript.columns);
+        tradeRouteDestinations = new Vector2[] { new Vector2(1, 1), new Vector2(boardScript.rows, boardScript.columns) };
+
+        upgradeOrder = new resource[] { resource.building ,resource.food, resource.wood, resource.stone, resource.ore, resource.none};
+
+        //building upgrade requirements
+        costTypes.Add(new resource[] { resource.stone, resource.metal });
+        costAmounts.Add(new int[] { 50, 20 });
+
+        //food upgrade requirements
+        costTypes.Add(new resource[] { resource.wood, resource.metal});
+        costAmounts.Add(new int[] { 100, 20 });
+
+        //wood upgrade requirements
+        costTypes.Add(new resource[] { resource.wood, resource.metal });
+        costAmounts.Add(new int[] { 100, 20 });
+
+        //stone upgrade requirements
+        costTypes.Add(new resource[] { resource.wood, resource.metal });
+        costAmounts.Add(new int[] { 150, 35 });
+
+        //ore upgrade requirements
+        costTypes.Add(new resource[] { resource.wood, resource.metal });
+        costAmounts.Add(new int[] { 100, 15 });
+
+        //worker speed upgrade requirements
+        costTypes.Add(new resource[] { resource.food, resource.wood });
+        costAmounts.Add(new int[] { 100, 100 });
+
+        //this should also be passed in from the board script
+        buildingsBuildable = new buildable[] { buildable.farm, buildable.furnace, buildable.house, buildable.tower, buildable.wall};
+        currentMenu = actionMenu.nothing;
+
+        spawnAreas = new Vector2[] { new Vector2(rows, 1) };
+
+        //enemy spawn details: time, position.x, position.y, enemyTypeNo
+        enemySpawnDetails = new float[] { 50.5f, columns, 1, 1, 100.25f, 1, rows, 1 };
+        
     }
 
     void Update()
@@ -159,10 +238,17 @@ public class GameManager : MonoBehaviour
 
         foodSlider.value = eatTimer;
 
-
-        if (Input.GetMouseButtonUp(0) && constructingBuilding && currentBuildingtoBuild == wall && !EventSystem.current.IsPointerOverGameObject())
+        if(enemySpawnDetails[enemySpawnInt] <= gameTime)
         {
-            constructingBuilding = false;
+            Vector2 spawnPos = new Vector2(enemySpawnDetails[enemySpawnInt + 1], enemySpawnDetails[enemySpawnInt + 2]);
+            //SpawnEnemy(spawnPos, enemySpawnDetails[enemySpawnInt + 3]) //last int is enemy type
+            enemySpawnInt += 4;
+            //CreateAndMoveEnemy(boardScript.marker);
+        }
+
+        if (Input.GetMouseButtonUp(0) && currentMenu == actionMenu.buildBuilding && currentBuildingtoBuild == wall && !EventSystem.current.IsPointerOverGameObject())
+        {
+            currentMenu = actionMenu.nothing;
             previewWallGameObjects.Clear();
         }
 
@@ -179,15 +265,15 @@ public class GameManager : MonoBehaviour
                 if(hitTag == "Resource" || hitTag == "BuildingResource")
                 {
                     HighlightResource(hit);
-                    constructingBuilding = false;
+                    currentMenu = actionMenu.nothing; 
                 }
             }
-            else if (constructingBuilding && currentBuildingtoBuild == wall && hit.collider == null)
+            else if (currentMenu == actionMenu.buildBuilding && currentBuildingtoBuild == wall && hit.collider == null)
             {
                 dragStartPosition = clickPosition;
                 
             }
-            else if (hit.collider == null && constructingBuilding)
+            else if (hit.collider == null && currentMenu == actionMenu.buildBuilding)
             {
                 if (clickPosition.y >= -0.5 && clickPosition.y <= rows + 0.5 && clickPosition.x >= -0.5 && clickPosition.x <= columns + 0.5)
                     CreateConstructionSite(clickPosition);
@@ -199,7 +285,7 @@ public class GameManager : MonoBehaviour
         }
 
         //dragging wall to be created
-        if(Input.GetMouseButton(0) && constructingBuilding && currentBuildingtoBuild == wall && !EventSystem.current.IsPointerOverGameObject())
+        if(Input.GetMouseButton(0) && currentMenu == actionMenu.buildBuilding && currentBuildingtoBuild == wall && !EventSystem.current.IsPointerOverGameObject())
         {
             RaycastHit2D hit = Physics2D.Raycast(Camera.main.ScreenToWorldPoint(Input.mousePosition), Vector2.zero);
             Vector2 clickPosition = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -371,72 +457,31 @@ public class GameManager : MonoBehaviour
 
     }
 
-    public bool IsPurchaseable(KeyValuePair<resource,int> pair)
-    {
-        if(resources[pair.Key] < pair.Value)
-        {
-            return false;
-        }
-        return true;
-    }
-
-    public void ReduceResources(KeyValuePair<resource, int> pair)
-    {
-        resources[pair.Key] -= pair.Value;
-        PrintResources();
-    }
-
-    public void AddResources(KeyValuePair<resource, int> pair)
-    {
-        resources[pair.Key] += pair.Value;
-        PrintResources();
-    }
-
-    int NumberOfBuildingsPurchaseable(GameObject building)
-    {
-        ConstructionSite site = building.GetComponent<ConstructionSite>();
-        bool loop = true;
-        int returnVal = -1;
-
-        while (loop)
-        {
-            for (int i = 0; i < site.costs.Length; i++)
-            {
-                if (!IsPurchaseable(new KeyValuePair<resource, int>(site.types[i], site.costs[i]*(returnVal + 3))))
-                {
-                    loop = false;
-                }
-            }
-            returnVal++;
-        }
-
-        return returnVal;
-    }
-
-    bool BuildingPurchaseable(GameObject building)
-    {
-        ConstructionSite site = building.GetComponent<ConstructionSite>();
-        for (int i = 0; i < site.costs.Length; i++)
-        {
-            if (!IsPurchaseable(new KeyValuePair<resource, int>(site.types[i], site.costs[i])))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     public void OnGUI()
     {
-        if (!constructingBuilding)
+        if (currentMenu == actionMenu.nothing)
         {
             buildingInfoText.text = "";
-            if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 30), "Build House"))
+            if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 80), "Build Buildings"))
             {
-                if(BuildingPurchaseable(house))
+                currentMenu = actionMenu.building;
+            }
+
+            if (GUI.Button(new Rect(Screen.width - 130, 230, 130, 80), "Upgrades"))
+            {
+                currentMenu = actionMenu.upgrading;
+            }
+            if (GUI.Button(new Rect(Screen.width - 130, 310, 130, 80), "Trade Routes"))
+            {
+                currentMenu = actionMenu.trading;
+            }
+        } else if (currentMenu == actionMenu.building)
+        {
+            if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 80), "Build House"))
+            {
+                if (BuildingPurchaseable(house))
                 {
-                    constructingBuilding = true;
+                    currentMenu = actionMenu.buildBuilding;
                     currentBuildingtoBuild = house;
                     PrintResources();
                 }
@@ -444,17 +489,17 @@ public class GameManager : MonoBehaviour
                 {
                     StartCoroutine(FlashText(resourceText, 0.5f, "\nInsufficient Resources"));
                 }
-                
+
             }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 190, 130, 30), "Build Furnace"))
+            if (GUI.Button(new Rect(Screen.width - 130, 230, 130, 80), "Build Furnace"))
             {
                 //resources[resource.wood] -= 50;
                 //resources[resource.stone] -= 30;
-                if(BuildingPurchaseable(furnace))
+                if (BuildingPurchaseable(furnace))
                 {
-                    constructingBuilding = true;
                     currentBuildingtoBuild = furnace;
+                    currentMenu = actionMenu.buildBuilding;
                     PrintResources();
                 }
                 else
@@ -463,26 +508,26 @@ public class GameManager : MonoBehaviour
                 }
             }
 
-           
 
-            if (GUI.Button(new Rect(Screen.width - 130, 230, 130, 30), "Build Farm"))
+
+            if (GUI.Button(new Rect(Screen.width - 130, 310, 130, 80), "Build Farm"))
             {
                 if (BuildingPurchaseable(farm))
                 {
-                    constructingBuilding = true;
                     currentBuildingtoBuild = farm;
+                    currentMenu = actionMenu.buildBuilding;
                     PrintResources();
                 }
 
             }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 270, 130, 30), "Build Wall"))
+            if (GUI.Button(new Rect(Screen.width - 130, 390, 130, 80), "Build Wall"))
             {
 
                 if (BuildingPurchaseable(wall))
                 {
-                    constructingBuilding = true;
                     currentBuildingtoBuild = wall;
+                    currentMenu = actionMenu.buildBuilding;
                     PrintResources();
                 }
                 else
@@ -491,13 +536,13 @@ public class GameManager : MonoBehaviour
                 }
             }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 310, 130, 30), "Build Tower"))
+            if (GUI.Button(new Rect(Screen.width - 130, 470, 130, 80), "Build Tower"))
             {
 
                 if (BuildingPurchaseable(tower))
                 {
-                    constructingBuilding = true;
                     currentBuildingtoBuild = tower;
+                    currentMenu = actionMenu.buildBuilding;
                     PrintResources();
                 }
                 else
@@ -505,56 +550,150 @@ public class GameManager : MonoBehaviour
                     StartCoroutine(FlashText(resourceText, 0.5f, "\nInsufficient Resources"));
                 }
             }
-            if (GUI.Button(new Rect(Screen.width - 130, 350, 130, 30), "Start Trade Route"))
+        }
+        else if (currentMenu == actionMenu.trading)
+        {
+            
+            for (int i = 0; i < tradeRouteDestinations.Length; i++)
             {
-                for (int i = 0; i < tradeRouteDestinations.Length; i++)
+                if (GUI.Button(new Rect(Screen.width - 130, 150 + (80 * i), 130 , 80), "Start Trade Route " + (i+1)))
                 {
-                    bool valid = true;
-                    for (int j = 0; j < tradeRouteCostAmounts[i].Length; j++)
-                    {
-                        if (!IsPurchaseable(new KeyValuePair<resource, int>(tradeRouteCostTypes[i][j], tradeRouteCostAmounts[i][j])))
-                        {
-                            valid = false;
-                        }
-                    }
-                    if (valid)
-                    {
-                        GameObject instance = Instantiate(tradeRouteGO, boardScript.homeBase.transform.position, Quaternion.identity) as GameObject;
-                        TradeRoute theTradeRoute = instance.GetComponent<TradeRoute>();
-                        theTradeRoute.Init(tradeRouteDestinations[i], tradeRouteCostAmounts[i], tradeRouteCostTypes[i], tradeRouteDeliverAmounts[i], tradeRouteDeliverTypes[i], 5);
-                    }
-                        
+                    currentMenu = actionMenu.startTradeRoute;
+                    currentTradeRoute = i;
                 }
-                //instantiate Trade Route here!!!
-                
+
+            }
+        }
+        else if (currentMenu == actionMenu.upgrading)
+        {
+            
+            if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 65), "Build Speed"))
+            {
+                currentUpgrade = resource.building;
+                currentMenu = actionMenu.finaliseUpgrade;
             }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 410, 130, 30), "Inc. Gather Amount") && resources[resource.food] >= 0 && resources[resource.gold] >= 0)
+            if (GUI.Button(new Rect(Screen.width - 130, 215, 130, 65), "Food Gather Rate"))
             {
-                resources[resource.food] -= 0;
-                resources[resource.gold] -= 0;
-                if (gatherMult < 1.2f)
-                    gatherMult = 1.2f;
-                UpdateResourceGatherAmount();
-                PrintResources();
+                currentUpgrade = resource.food;
+                currentMenu = actionMenu.finaliseUpgrade;
             }
-
-            if (GUI.Button(new Rect(Screen.width - 130, 450, 130, 30), "Inc. Move Speed") && resources[resource.food] >= 0 && resources[resource.gold] >= 0)
+            if (GUI.Button(new Rect(Screen.width - 130, 280, 130, 65), "Wood Gather Rate"))
             {
-                resources[resource.food] -= 0;
-                resources[resource.gold] -= 0;
-                speedMult += .2f;
-                UpdateWorkerMoveSpeed();
-                PrintResources();
+                currentUpgrade = resource.wood;
+                currentMenu = actionMenu.finaliseUpgrade;
+            }
+            if (GUI.Button(new Rect(Screen.width - 130, 345, 130, 65), "Stone Gather Rate"))
+            {
+                currentUpgrade = resource.stone;
+                currentMenu = actionMenu.finaliseUpgrade;
+            }
+            if (GUI.Button(new Rect(Screen.width - 130, 410, 130, 65), "Ore Gather Rate"))
+            {
+                currentUpgrade = resource.ore;
+                currentMenu = actionMenu.finaliseUpgrade;
+            }
+            if (GUI.Button(new Rect(Screen.width - 130, 475, 130, 65), "Woker Speed"))
+            {
+                currentUpgrade = resource.none;
+                currentMenu = actionMenu.finaliseUpgrade;
             }
 
         }
-        else
+        else if(currentMenu == actionMenu.buildBuilding)
         {
             buildingDetails = currentBuildingtoBuild.GetComponent<ConstructionSite>();
+            string costText = "";
+            for (int i = 0; i < buildingDetails.costs.Length; i++)
+            {
+                costText += buildingDetails.costs[i] + " ";
+                costText += buildingDetails.types[i] + "\n";
+            }
 
-            buildingInfoText.text = "Building: " + buildingDetails.name + "\n" + "Cost: " + /*buildingDetails.cost +*/ "\n" + "Function: " + buildingDetails.function;
+            buildingInfoText.text = "Building: " + buildingDetails.name + "\n\n" + "Cost:\n" + costText + "\nFunction:\n" + buildingDetails.function + "\n\nClick Empty Space to Place";
 
+            if (GUI.Button(new Rect(Screen.width - 130, 450, 130, 80), "Cancel"))
+            {
+
+                currentMenu = actionMenu.nothing;
+            }
+        }
+        else if(currentMenu == actionMenu.startTradeRoute)
+        {
+            buildingInfoText.text = "\nCosts: \n";
+            for (int i = 0; i < costAmounts[currentTradeRoute].Length; i++)
+            {
+                buildingInfoText.text += costTypes[currentTradeRoute][i].ToString() + ": " + costAmounts[currentTradeRoute][i] + "\n";
+            }
+            buildingInfoText.text += "\nBenefits: \n";
+            for (int i = 0; i < deliverAmounts[currentTradeRoute].Length; i++)
+            {
+                buildingInfoText.text += deliverTypes[currentTradeRoute][i].ToString() + ": " + deliverAmounts[currentTradeRoute][i] + "\n";
+            }
+            buildingInfoText.text += "\nDestination: " + tradeRouteDestinations[currentTradeRoute].ToString();
+
+            if (GUI.Button(new Rect(Screen.width - 130, 450, 65, 80), "Start"))
+            {
+                bool valid = true;
+                for (int j = 0; j < costAmounts[currentTradeRoute].Length; j++)
+                {
+                    if (!IsPurchaseable(new KeyValuePair<resource, int>(costTypes[currentTradeRoute][j], costAmounts[currentTradeRoute][j])))
+                    {
+                        valid = false;
+                    }
+                }
+
+                if (valid)
+                {
+                    GameObject instance = Instantiate(tradeRouteGO, boardScript.homeBase.transform.position, Quaternion.identity) as GameObject;
+                    TradeRoute theTradeRoute = instance.GetComponent<TradeRoute>();
+                    theTradeRoute.Init(tradeRouteDestinations[currentTradeRoute], costAmounts[currentTradeRoute], costTypes[currentTradeRoute],
+                        deliverAmounts[currentTradeRoute], deliverTypes[currentTradeRoute], 5);
+                }
+                else
+                {
+                    StartCoroutine(FlashText(resourceText, 1.0f, "\n\nNot Enough\nResources"));
+                }
+                currentMenu = actionMenu.nothing;
+            }
+            if(GUI.Button(new Rect(Screen.width - 65, 450, 65, 80), "Cancel"))
+            {
+                
+                currentMenu = actionMenu.nothing;
+            }
+
+        }
+        else if(currentMenu == actionMenu.finaliseUpgrade)
+        {
+            int upgradeNo = -1;
+            for (int i = 0; i < upgradeOrder.Length; i++)
+            {
+                if(upgradeOrder[i] == currentUpgrade)
+                {
+                    upgradeNo = i;
+                    break;
+                }
+            } 
+
+            buildingInfoText.text = "Upgrade " + currentUpgrade.ToString() + " Gather Rate ";
+
+            buildingInfoText.text += "to collect " + currentUpgrade.ToString() + " 20% faster \n\n";
+            buildingInfoText.text += "Costs:\n";
+            for (int i = 0; i <  costAmounts[tradeRouteDestinations.Length + upgradeNo].Length; i++)
+            {
+                buildingInfoText.text += costTypes[tradeRouteDestinations.Length + upgradeNo][i].ToString() + ": " + costAmounts[tradeRouteDestinations.Length + upgradeNo][i] + "\n";
+            }
+            
+            if (GUI.Button(new Rect(Screen.width - 130, 450, 65, 80), "Upgrade"))
+            {
+                UpdateResourceGatherAmount(currentUpgrade, 1.2f);
+                currentMenu = actionMenu.nothing;
+            }
+            if (GUI.Button(new Rect(Screen.width - 65, 450, 65, 80), "Cancel"))
+            {
+
+                currentMenu = actionMenu.nothing;
+            }
         }
 
 
@@ -602,6 +741,71 @@ public class GameManager : MonoBehaviour
                 }
             }
         }
+    }
+
+    //SpawnEnemy(spawnPos, enemySpawnDetails[enemySpawnInt + 3]) //last int is enemy type
+    void SpawnEnemy(Vector2 position, int enemyType)
+    {
+        GameObject enemy = Instantiate(enemyTypes[enemyType], position, Quaternion.identity) as GameObject;
+
+        //create generic enemy class which inherits from worker but is a parent of all enemy types
+        //overwrite init() from worker;  
+    } 
+
+    public bool IsPurchaseable(KeyValuePair<resource, int> pair)
+    {
+        if (resources[pair.Key] < pair.Value)
+        {
+            return false;
+        }
+        return true;
+    }
+
+    public void ReduceResources(KeyValuePair<resource, int> pair)
+    {
+        resources[pair.Key] -= pair.Value;
+        PrintResources();
+    }
+
+    public void AddResources(KeyValuePair<resource, int> pair)
+    {
+        resources[pair.Key] += pair.Value;
+        PrintResources();
+    }
+
+    int NumberOfBuildingsPurchaseable(GameObject building)
+    {
+        ConstructionSite site = building.GetComponent<ConstructionSite>();
+        bool loop = true;
+        int returnVal = -1;
+
+        while (loop)
+        {
+            for (int i = 0; i < site.costs.Length; i++)
+            {
+                if (!IsPurchaseable(new KeyValuePair<resource, int>(site.types[i], site.costs[i] * (returnVal + 3))))
+                {
+                    loop = false;
+                }
+            }
+            returnVal++;
+        }
+
+        return returnVal;
+    }
+
+    bool BuildingPurchaseable(GameObject building)
+    {
+        ConstructionSite site = building.GetComponent<ConstructionSite>();
+        for (int i = 0; i < site.costs.Length; i++)
+        {
+            if (!IsPurchaseable(new KeyValuePair<resource, int>(site.types[i], site.costs[i])))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     Worker GetClosestCancelledWorker(Resources resource)
@@ -688,7 +892,7 @@ public class GameManager : MonoBehaviour
         {
             ReduceResources(new KeyValuePair<resource, int>(site.types[i], site.costs[i]));
         }
-        constructingBuilding = false;
+        currentMenu = actionMenu.nothing;
     }
 
     protected IEnumerator FlashText(Text redText, float delay, string addText)
@@ -719,19 +923,24 @@ public class GameManager : MonoBehaviour
         return (new Vector2(tMin.transform.position.x, tMin.transform.position.y) - worker).sqrMagnitude;
     }
 
-    private void UpdateResourceGatherAmount()
+    //need to update to spread for each resource type
+    private void UpdateResourceGatherAmount( resource upgradeType, float mult)
     {
         GameObject[] resources = GameObject.FindGameObjectsWithTag("Resource");
-        
+        resourceUpgrades[upgradeType] *= mult;
         foreach (GameObject resource in resources)
         {
-            resource.GetComponent<Resources>().AdjustGatherAmount();
+            Resources upgradeResource = resource.GetComponent<Resources>();
+            if(upgradeResource.resourceType == upgradeType)
+                resource.GetComponent<Resources>().AdjustGatherAmount(resourceUpgrades[upgradeType]);
         }
-        resources = GameObject.FindGameObjectsWithTag("BuildingResource");
-        foreach (GameObject resource in resources)
-        {
-            resource.GetComponent<Resources>().AdjustGatherAmount();
-        }
+        //resources = GameObject.FindGameObjectsWithTag("BuildingResource");
+
+        //foreach (GameObject resource in resources)
+        //{
+        //    resource.GetComponent<Resources>().AdjustGatherAmount();
+        //}
+        currentMenu = actionMenu.nothing;
     }
 
     private void UpdateWorkerMoveSpeed()
@@ -740,6 +949,7 @@ public class GameManager : MonoBehaviour
         {
             worker.UpdateMoveSpeed(speedMult);
         }
+        currentMenu = actionMenu.nothing;
     }
 
     void DestroyWorker(Worker worker, int position)
@@ -847,39 +1057,25 @@ public class GameManager : MonoBehaviour
         yield return null;
     }
 
-    //private void CreateAndMoveStealer(Vector2 location)
-    //{
-    //    List<Vector2> path;
-    //    GameObject closestBuilding = GetClosestBuilding(buildings, location, false, out path);
-    //    if (path != null)
-    //    {
-    //        //instantiate new instance of worker in the house and make them move to the touch position. 
-    //        GameObject newStealer = Instantiate(stealer, location, Quaternion.identity) as GameObject;
-    //        //yield return null;
-    //        Stealer aStealer = newStealer.GetComponent<Stealer>();
-    //        aStealer.Move(path);
-    //        //print stealers
-    //    }
-    //}
-
-    //private void CreateAndMoveEnemy(Vector2 location)
-    //{
-    //    instantiate new instance of worker in the house and make them move to the touch position. 
-    //    GameObject newEnemy = Instantiate(enemy, location, Quaternion.identity) as GameObject;
-    //    yield return null;
-    //    Enemy aEnemy = newEnemy.GetComponent<Enemy>();
-    //    List<Vector2> path = FindPath(location, boardScript.homeBase.transform.position, aEnemy.attackDamgage, out pathDistance);
-    //    aEnemy.Move(path);
-    //    print enemies
-    //}
-
     void UpdateHighlightedText(Resources highlightedResource)
     {
+        string resourceType = "";
         if (highlightedResource != null)
-            highlightedText.text = "Resource\nType: " + highlightedResource.resourceType + "\nRemaining: " +
-                (int)Mathf.Round(highlightedResource.resourcesRemaining) + "\nWorkers: " + highlightedResource.workerSlots.Count;
+        {
+            if (highlightedResource.resourceType == resource.building)
+            {
+                resourceType = highlightedResource.GetComponent<ConstructionSite>().name;
+            }
+            else
+            {
+                resourceType = highlightedResource.resourceType.ToString();
+            }
+            highlightedText.text = "Resource\nType: " + resourceType + "\nRemaining: " +
+                    (int)Mathf.Round(highlightedResource.resourcesRemaining) + "\nWorkers: " + highlightedResource.workerSlots.Count +
+                    "\nGather Rate: " + highlightedResource.gatherAmount + "\nGather Time: " + highlightedResource.gatherTime;
+        }
         else
-            highlightedText.text = "Resource\nType: \nRemaining: \nWorkers: ";
+            highlightedText.text = "Resource\nType: \nRemaining: \nWorkers: \nGather Rate: \nGather Time: ";
 
     }
 
@@ -909,14 +1105,6 @@ public class GameManager : MonoBehaviour
     void CreateWorkers(Resources resource, int amount)
     {
         
-        //GameObject closestBuilding = GetClosestBuilding(buildings, resource.transform.position);
-        //List<Vector2> path = FindPath(closestBuilding.transform.position, resource.transform.position, 0, out pathDistance);
-        //if(path == null)
-        //{
-        //    currentResource.tempWorkers = 0;
-        //}
-        //else
-        //{
         if (workers.Count < totalWorkers && resource != null)
         {
             amount = amount - resource.workerSlots.Count;
@@ -930,7 +1118,6 @@ public class GameManager : MonoBehaviour
                 }
             }
         }
-        //}
     }
 
     int GetDistance(Vector2 start, Vector2 end)

@@ -3,11 +3,17 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 
+public enum state
+{
+    movingToResource, gathering, inBattle, cancel, movingHome, pathEnded 
+}
+
 public class Worker : MonoBehaviour
 {
     [HideInInspector]
     public Resources targetResource;
     bool gathering, movingToResource, movingHome, pathEnded;
+    state currentState; 
     [HideInInspector] public bool cancel, destroy;
     [HideInInspector] public float heldResourceAmount = 0;
     public float moveSpeed = .5f;
@@ -23,8 +29,9 @@ public class Worker : MonoBehaviour
     float gatherTimer = 0;
     int gatherCounter = 0;
     protected List<Vector2> path;
-    Vector2[] locations;
+    protected Vector2[] locations;
     private resource heldResourceType;
+    GameObject engagedEnemy;
 
     void Awake()
     {
@@ -59,6 +66,7 @@ public class Worker : MonoBehaviour
             StartCoroutine(SmoothMovement(path, false));
             IsMovingAnimation(true);
         }
+        //GetComponent<Entity>().CreateEntity();
     }
 
     public void Uncancel()
@@ -93,6 +101,11 @@ public class Worker : MonoBehaviour
                 DestroyObject(this);
             }
         }
+    }
+
+    public void EnterCombat()
+    {
+        StopAllCoroutines();
     }
 
     public void UpdateMoveSpeed( float multiplier)

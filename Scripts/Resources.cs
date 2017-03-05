@@ -19,7 +19,7 @@ public class Resources : MonoBehaviour
 
     void Awake()
     {
-        AdjustGatherAmount();
+        AdjustGatherAmount(GameManager.resourceUpgrades[resourceType]);
         path = new List<Vector2>();
     }
 
@@ -62,9 +62,9 @@ public class Resources : MonoBehaviour
         }
     }
 
-    public void AdjustGatherAmount()
+    public void AdjustGatherAmount(float mult)
     {
-        gatherAmount = (int)Mathf.Round(gatherAmount * GameManager.instance.gatherMult);
+        gatherAmount = (int)Mathf.Round(gatherAmount * mult);
     }
 
     public bool AreSlotsAvailable(int amount)
