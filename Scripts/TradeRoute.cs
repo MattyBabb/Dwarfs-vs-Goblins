@@ -14,25 +14,32 @@ public class TradeRoute : Worker
     resource[] deliverTypes;
     Vector2 destination, start;
     bool delivering, returning;
-    //List<Vector2> path;
+    List<Vector2> path;
     float oneSecTimer = 0f;
     float waitCounter;
     int waitTime;
+    List<Entity> attackers;
+    int maxAttackers;
+    SpriteRenderer sprite;
 
     // Use this for initialization
     void Awake ()
     {
         anim = GetComponent<Animator>();
         sprite = GetComponent<SpriteRenderer>();
-        boxCollider = GetComponent<BoxCollider2D>();
-        rb2D = GetComponent<Rigidbody2D>();
+        thisMovingObject = GetComponent<MovingObject>();
+        //boxCollider = GetComponent<BoxCollider2D>();
+        //rb2D = GetComponent<Rigidbody2D>();
         path = new List<Vector2>();
         start = GameManager.instance.boardScript.homeBase.transform.position;
+        attackers = new List<Entity>();
+        maxAttackers = 1;
     }
 
     public void Init(Vector2 dest, int[] _costAmounts, resource[] _costTypes, int[] _deliverAmounts, resource[] _deliverTypes, int wait)
     {
-        PathRequestManager.RequestPath(transform.position, new Vector2[] { dest}, 0, true, OnPathFound);
+        //PathRequestManager.RequestPath(transform.position, new Vector2[] { dest}, 0, true, OnPathFound);
+        thisMovingObject.MoveToLocation(dest);
         destination = dest;
         costAmounts = _costAmounts;
         costTypes = _costTypes;
@@ -70,6 +77,26 @@ public class TradeRoute : Worker
         }
         return retVal;
     }
+
+    public bool AddAttackers(Entity attacker)
+    {
+        if(attackers.Count < maxAttackers)
+        {
+            attackers.Add(attacker);
+            return true;
+        }
+        return false;
+        
+    }
+
+    //the trade route has been looted by enemies
+    public void Loot()
+    {
+        active = false;
+        sprite.enabled = false;
+        SimplePool.Despawn(this.gameObject);
+
+    }
 	
 	// Update is called once per frame
 	void Update ()
@@ -88,7 +115,8 @@ public class TradeRoute : Worker
                 {
                     waitCounter = 0f;
                     delivering = true;
-                    StartCoroutine(SmoothMovement(path, false));
+                    thisMovingObject.MoveToLocation(start);
+                    //StartCoroutine(SmoothMovement(path, false));
                     ReduceResources();
                 }
             }
@@ -104,7 +132,8 @@ public class TradeRoute : Worker
                         sprite.enabled = true;
                         delivering = false;
                         returning = true;
-                        StartCoroutine(SmoothMovement(path, true));
+                        //StartCoroutine(SmoothMovement(path, true));
+                        thisMovingObject.MoveToLocation(destination);
                     }
                 }
             }
@@ -115,9 +144,7 @@ public class TradeRoute : Worker
                     //trade route complete! 
                     //deliver resources!!
                     IncreaseResources();
-                    active = false;
-                    sprite.enabled = false;
-                    Destroy(this);
+                    Loot();
                 }
             }
         }

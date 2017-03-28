@@ -12,8 +12,6 @@ public class ConstructionSite : Resources
     public resource[] types;
     List<GameObject> resources;
 
-    
-
     //void Awake()
     //{
     //    Dictionary<resource, int> dict = new Dictionary<resource, int>();
@@ -25,7 +23,6 @@ public class ConstructionSite : Resources
     //    {
     //        GameManager.instance.ReduceResources(pair);
     //    }
-
     //}
 
     public override void ReduceResources(float amount)
@@ -33,8 +30,9 @@ public class ConstructionSite : Resources
         resourcesRemaining -= amount;
         if (resourcesRemaining <= 0)
         {
+            //GameManager.instance.RemoveHighlightedResource();
             gameObject.SetActive(false);
-            Instantiate(Building, transform.position, Quaternion.identity);
+            GameObject instance =  Instantiate(Building, transform.position, Quaternion.identity) as GameObject;
             resources = new List<GameObject>(GameObject.FindGameObjectsWithTag("Resource"));
             resources.Sort((v1, v2) => (v1.transform.position - transform.position).sqrMagnitude.CompareTo((v2.transform.position - transform.position).sqrMagnitude));
 
@@ -49,6 +47,10 @@ public class ConstructionSite : Resources
                         tempResource.RequestPath();
                     }
                 }
+                foreach(Worker worker in workerSlots)
+                {
+                    worker.destroy = true;
+                }
             }
             else
             {
@@ -61,12 +63,17 @@ public class ConstructionSite : Resources
                     }
                 }
             }
-            for (int i = workerSlots.Count - 1; i >= 0; i--)
-            {
-                workerSlots[i].Cancel();
-            }
             if (GameManager.instance.currentResource == this)
+            {
                 GameManager.instance.RemoveHighlightedResource();
+                if (instance.tag == "BuildingResource")
+                {
+                    RaycastHit2D hit = Physics2D.Raycast(instance.transform.position, Vector2.zero);
+                    GameManager.instance.HighlightResource(hit);
+                }
+                    
+            }
+                
             Destroy(gameObject);
         }
     }

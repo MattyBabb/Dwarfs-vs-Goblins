@@ -5,186 +5,92 @@ using System;
 
 public enum state
 {
-    movingToResource, gathering, inBattle, cancel, movingHome, pathEnded 
+    movingToTarget, gathering, inBattle, cancel, movingHome, pathEnded, inBuilding, nothing 
 }
 
 public class Worker : MonoBehaviour
 {
     [HideInInspector]
+    public Animator anim;
+    public float attackRange;
+    [HideInInspector]
     public Resources targetResource;
-    bool gathering, movingToResource, movingHome, pathEnded;
-    state currentState; 
+    [HideInInspector]
+    public GameObject target;
+    [HideInInspector] public state currentState; 
     [HideInInspector] public bool cancel, destroy;
     [HideInInspector] public float heldResourceAmount = 0;
-    public float moveSpeed = .5f;
-    [HideInInspector]
-    public SpriteRenderer sprite;
-    [HideInInspector]
-    public Animator anim;
-    private float baseMoveSpeed = .5f;
-    [HideInInspector]
-    public BoxCollider2D boxCollider;
-    [HideInInspector]
-    public Rigidbody2D rb2D;
-    float gatherTimer = 0;
-    int gatherCounter = 0;
-    protected List<Vector2> path;
+    float timer = 0;
+    int gatherCounter;
     protected Vector2[] locations;
     private resource heldResourceType;
-    GameObject engagedEnemy;
+    Entity thisEntity;
+    protected MovingObject thisMovingObject;
 
     void Awake()
     {
         anim = GetComponent<Animator>();
-        sprite = GetComponent<SpriteRenderer>();
-        boxCollider = GetComponent<BoxCollider2D>();
-        rb2D = GetComponent<Rigidbody2D>();
-        anim.SetBool("WorkerGather", false);
-        path = new List<Vector2>();
-        UpdateMoveSpeed(GameManager.instance.speedMult);
-        gathering = false;
+        currentState = state.nothing;
         cancel = false;
         destroy = false;
-        movingToResource = false;
+        thisEntity = GetComponent<Entity>();
+        thisMovingObject = GetComponent<MovingObject>();
+        gatherCounter = 1;
     }
 
     public void Init(Resources aResource)
     {
-        gathering = false;
+        thisMovingObject.UpdateMoveSpeed(GameManager.instance.speedMult);
         cancel = false;
         destroy = false;
-        movingToResource = true;
-        movingHome = false;
-        pathEnded = false;
+        currentState = state.movingToTarget;
         //path.Clear();
         targetResource = aResource;
+        timer = 0;
+        gatherCounter = 1;
         if (targetResource != null)
         {
-            StopAllCoroutines();
-            path = targetResource.path;
-            transform.position = path[0];
-            StartCoroutine(SmoothMovement(path, false));
-            IsMovingAnimation(true);
+            thisMovingObject.StopAllCoroutines();
+            //path = targetResource.path;
+            transform.position = targetResource.path[0];
+            thisMovingObject.MoveOnPath(targetResource.path, false);
+            //IsMovingAnimation(true);
         }
+        thisEntity.currentHP = thisEntity.maxHP;
         //GetComponent<Entity>().CreateEntity();
     }
 
     public void Uncancel()
     {
-        gathering = false;
         cancel = false;
         destroy = false;
-        movingToResource = true;
-        movingHome = false;
+        currentState = state.movingToTarget;
         targetResource = GameManager.instance.currentResource;
         if (targetResource != null)
         {
-            StopAllCoroutines();
-            PathRequestManager.RequestPath(targetResource.transform.position, new Vector2[] { transform.position }, 0, false, OnPathFound);
+            thisMovingObject.MoveToObject(targetResource.gameObject);
         }
     }
 
-    protected void OnPathFound(List<Vector2> newPath, bool pathSuccessful, float distance)
+    public void EnterCombat(Enemy enemy)
     {
-        if (pathSuccessful && this != null && this.isActiveAndEnabled)
-        {
-            path = newPath;
-            transform.position = path[0];
-            StopAllCoroutines();
-            if (path.Count > 0)
-            {
-                StartCoroutine(SmoothMovement(path, false));
-                IsMovingAnimation(true);
-            }
-            else
-            {
-                DestroyObject(this);
-            }
-        }
-    }
-
-    public void EnterCombat()
-    {
-        StopAllCoroutines();
-    }
-
-    public void UpdateMoveSpeed( float multiplier)
-    {
-        moveSpeed = multiplier * baseMoveSpeed;
-    }
-
-    protected IEnumerator SmoothMovement (List<Vector2> ends, bool reversed)
-    {
-        IsMovingAnimation(true);
-        float xDir = 0, yDir = 0;
-        if (reversed)
-        {
-            for (int i = ends.Count-1; i >= 0; i--)
-            {
-                float squRemainingDistance = (transform.position - new Vector3(ends[i].x, ends[i].y, 0)).sqrMagnitude;
-                //float totalDistance = squRemainingDistance;
-
-                while (squRemainingDistance > float.Epsilon)
-                {
-                    xDir = ends[i].x - transform.position.x;
-                    yDir = ends[i].y - transform.position.y;
-
-                    //flip sprite if moving right 
-                    if (xDir > 0)
-                        sprite.flipX = true;
-                    else
-                        sprite.flipX = false;
-
-                    Vector2 newPosition = Vector2.MoveTowards(transform.position, ends[i], moveSpeed * Time.deltaTime);
-                    rb2D.MovePosition(newPosition);
-                    squRemainingDistance = (transform.position - new Vector3(ends[i].x, ends[i].y, 0)).sqrMagnitude;
-
-                    yield return null;
-                }
-            }
-        }
-        else
-        {
-            foreach (Vector2 end in ends)
-            {
-                float squRemainingDistance = (transform.position - new Vector3(end.x, end.y, 0)).sqrMagnitude;
-                //float totalDistance = squRemainingDistance;
-
-                while (squRemainingDistance > float.Epsilon)
-                {
-                    xDir = end.x - transform.position.x;
-                    yDir = end.y - transform.position.y;
-
-                    //flip sprite if moving right 
-                    if (xDir > 0)
-                        sprite.flipX = true;
-                    else
-                        sprite.flipX = false;
-
-                    Vector2 newPosition = Vector2.MoveTowards(transform.position, end, moveSpeed * Time.deltaTime);
-                    rb2D.MovePosition(newPosition);
-                    squRemainingDistance = (transform.position - new Vector3(end.x, end.y, 0)).sqrMagnitude;
-
-                    yield return null;
-                }
-            }
-        }
-        pathEnded = true;
+        thisMovingObject.StopAllCoroutines();
+        currentState = state.inBattle;
+        timer = 0f;
+        target = enemy.gameObject;
+        anim.SetBool("Move", false);
     }
 
     private void Gather()
     {
         if(targetResource.resourceType != resource.building)
         {
-
+            
             heldResourceAmount = (targetResource.gatherAmount / (targetResource.gatherTime / gatherCounter));
             targetResource.ReduceResources((targetResource.gatherAmount / (targetResource.gatherTime)));
-            if (gatherTimer >= targetResource.gatherTime)
+            if (timer >= targetResource.gatherTime)
             {
                 heldResourceAmount = targetResource.gatherAmount;
-                gathering = false;
-                movingHome = true;
-                pathEnded = false;
             }
             if (heldResourceAmount > 0)
                 heldResourceType = targetResource.resourceType;
@@ -192,21 +98,9 @@ public class Worker : MonoBehaviour
         }
         else if (targetResource.resourceType == resource.building)
         {
-            targetResource.ReduceResources(targetResource.gatherAmount);
-            gatherTimer = 0;
-        }
-    }
 
-    public void IsMovingAnimation(bool moving)
-    {
-        if (moving)
-        {
-            anim.SetBool("WorkerGather", false);
-            gatherTimer = 0;
-            gatherCounter = 1;
+            targetResource.ReduceResources(targetResource.gatherAmount);
         }
-        else
-            anim.SetBool("WorkerGather", true);
     }
 
     void DepositResources()
@@ -218,16 +112,22 @@ public class Worker : MonoBehaviour
 
     public void Cancel()
     {
-        StopAllCoroutines();
-        locations = Array.ConvertAll(GameObject.FindGameObjectsWithTag("Building"), item => new Vector2(item.transform.position.x, item.transform.position.y));
-        PathRequestManager.RequestPath(transform.position, locations, 0, true, OnPathFound);
-        gathering = false;
-        movingToResource = false;
-        movingHome = false;
+        //StopAllCoroutines();
+        //locations = Array.ConvertAll(GameObject.FindGameObjectsWithTag("Building"), item => new Vector2(item.transform.position.x, item.transform.position.y));
+        //PathRequestManager.RequestPath(transform.position, locations, 0, true, OnPathFound);
+        //MoveToClosestObject(GameObject[] targets)
+        thisMovingObject.MoveToClosestObject(GameObject.FindGameObjectsWithTag("Building"));
         cancel = true;
-        if(targetResource != null)
-        { 
-            targetResource.workerSlots.Remove(this);
+        currentState = state.movingHome;
+        anim.SetBool("Move", true);
+        if (targetResource != null)
+        {
+            if(targetResource.name == "House")
+            {
+                destroy = true;
+            }    
+            targetResource.RemoveWorkerFromSlot(this);
+            
         }
     }
 	
@@ -235,48 +135,82 @@ public class Worker : MonoBehaviour
     {
         if (isActiveAndEnabled)
         {
-            if (movingHome)
+            if (currentState == state.nothing)
             {
-                //move to target building
-                StartCoroutine(SmoothMovement(targetResource.path, true));
-                IsMovingAnimation(true);
-                movingHome = false;
+                thisMovingObject.StopAllCoroutines();
+                //IsMovingAnimation(false);
+                anim.SetBool("Move", true);
             }
-            else if(movingToResource)
+            else if (currentState == state.inBattle)
             {
-                //move to target resource
-                StartCoroutine(SmoothMovement(targetResource.path, false));
-                IsMovingAnimation(true);
-                movingToResource = false;
+                //thisMovingObject.StopAllCoroutines();
+                //anim.SetBool("Move", false);
+                timer += Time.deltaTime;
+                if (thisEntity != null && thisEntity.attackFrequency < timer)
+                {
+                    thisEntity.Attack(target.GetComponent<Entity>());
+                    timer = 0;
+
+                }
             }
-            else if (!gathering && targetResource != null && (targetResource.transform.position - transform.position).sqrMagnitude < float.Epsilon && heldResourceAmount < targetResource.gatherAmount)
+            else if (currentState == state.movingToTarget && targetResource != null
+                && (targetResource.transform.position - transform.position).sqrMagnitude < float.Epsilon)
             {
-                gathering = true;
-                movingToResource = false;
-                IsMovingAnimation(false);
-                StopAllCoroutines();
-                //path.Clear();
+                //IsMovingAnimation(false);
+                anim.SetBool("Move", false);
+                thisMovingObject.StopAllCoroutines();
+                if (targetResource.tag == "Resource")
+                    currentState = state.gathering;
+                else
+                {
+                    currentState = state.inBuilding;
+                    timer = 1;
+                }
+
             }
-            else if (gathering)
+            else if (currentState == state.gathering)
             {
                 if (targetResource.resourcesRemaining <= 0)
                 {
+                    timer = 0;
+                    gatherCounter = 1;
                     Cancel();
                 }
                 else
                 {
-                    gatherTimer += Time.deltaTime;
-                    if (gatherTimer >= gatherCounter && targetResource.resourcesRemaining > 0)
+                    timer += Time.deltaTime;
+                    if (timer >= gatherCounter && targetResource.resourcesRemaining > 0)
                     {
-                        gatherCounter++;
                         Gather();
+                        gatherCounter++;
+                    }
+                    if (heldResourceAmount == targetResource.gatherAmount)
+                    {
+                        thisMovingObject.MoveOnPath(targetResource.path, true);
+                        //StartCoroutine(SmoothMovement(targetResource.path, true));
+                        //IsMovingAnimation(true);
+                        timer = 0;
+                        gatherCounter = 1;
+                        currentState = state.movingHome;
                     }
                 }
             }
-            else if (pathEnded)
+            else if (currentState == state.inBuilding)
             {
-                pathEnded = false;
-                StopAllCoroutines();
+                if (timer >= 1)
+                {
+                    targetResource.ReduceResources(targetResource.gatherAmount);
+                    timer = 0;
+                }
+                else
+                {
+                    timer += Time.deltaTime;
+                }
+            }
+            else if (currentState == state.movingHome && (targetResource.path[0] - (Vector2)transform.position).sqrMagnitude < float.Epsilon)
+            {
+                //pathEnded = false;
+                thisMovingObject.StopAllCoroutines();
                 if (heldResourceAmount > 0)
                 {
                     DepositResources();
@@ -293,9 +227,21 @@ public class Worker : MonoBehaviour
                 }
                 else //if ((new Vector3(path[path.Count - 1].x, path[path.Count - 1].y, 0) - transform.position).sqrMagnitude < float.Epsilon)
                 {
-                    movingToResource = true;
+                    thisMovingObject.MoveOnPath(targetResource.path, false);
+                    //StartCoroutine(SmoothMovement(targetResource.path, false));
+                    //IsMovingAnimation(true);
+                    currentState = state.movingToTarget;
                     //path.Clear();
                 }
+            }
+            else if (cancel && destroy)
+            {
+                GameManager.instance.ProcessWorkers();
+            }
+            else if (targetResource == null)
+            {
+                Cancel();
+                destroy = true;
             }
         }
     }

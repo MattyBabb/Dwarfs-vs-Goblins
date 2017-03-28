@@ -15,7 +15,9 @@ public class Resources : MonoBehaviour
     public int tempWorkers;
     [HideInInspector]
     public List<Vector2> path;
-    Vector2[] locations;
+    [HideInInspector]
+    public float pathDistance;
+    protected Vector2[] locations;
 
     void Awake()
     {
@@ -28,6 +30,7 @@ public class Resources : MonoBehaviour
         if (pathSuccessful)
         {
             path = newPath;
+            pathDistance = distance;
         }
     }
 
@@ -75,7 +78,7 @@ public class Resources : MonoBehaviour
             return false;
     }
 
-    public void AddWorkerToSlot(Worker worker)
+    public virtual void AddWorkerToSlot(Worker worker)
     {
         if(workerSlots.Count < numberOfSlots)
         {
@@ -83,10 +86,12 @@ public class Resources : MonoBehaviour
         }
     }
 
-    public void RemoveWorkerFromSlot(Worker worker)
+    public virtual void RemoveWorkerFromSlot(Worker worker)
     {
         if (workerSlots.Count > 0)
-            workerSlots.RemoveAt(workerSlots.Count-1);
+        {
+            workerSlots.RemoveAt(workerSlots.Count - 1);
+        }
     }
 
 }

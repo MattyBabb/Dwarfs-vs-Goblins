@@ -22,7 +22,7 @@ public class Wall : MonoBehaviour
             if (ray.collider != null)
             {
                 hitTag = ray.collider.gameObject.tag;
-                if (hitTag == "Forts")
+                if (hitTag == "Fort")
                 {
                     if (i == position.y - 1)
                     {
@@ -45,7 +45,7 @@ public class Wall : MonoBehaviour
             if (ray.collider != null)
             {
                 hitTag = ray.collider.gameObject.tag;
-                if (hitTag == "Forts")
+                if (hitTag == "Fort")
                 {
                     if (i == position.x - 1)
                     {
@@ -122,7 +122,7 @@ public class Wall : MonoBehaviour
 
             if(ray.collider != null)
             {
-                if(ray.collider.gameObject.tag == "Forts")
+                if(ray.collider.gameObject.tag == "Fort")
                 {
                     ray.collider.gameObject.GetComponent<Wall>().EvaluateSprite();
                 }

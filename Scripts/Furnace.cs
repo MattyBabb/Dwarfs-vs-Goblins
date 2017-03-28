@@ -15,7 +15,10 @@ public class Furnace : Resources {
         {
             GameManager.resources[resource.ore] = 0;
             GameManager.resources[resource.metal] += 1;
-            workerSlots[0].Cancel();
+            foreach(Worker worker in workerSlots)
+            {
+                worker.Cancel();
+            }
         }
     }
 }

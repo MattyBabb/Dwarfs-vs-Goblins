@@ -9,13 +9,18 @@ public class Stealer : Worker {
 	
 	}
 
+    public void Init()
+    {
+
+    }
+
     void Awake()
     {
         anim = GetComponent<Animator>();
-        sprite = GetComponent<SpriteRenderer>();
-        boxCollider = GetComponent<BoxCollider2D>();
-        rb2D = GetComponent<Rigidbody2D>();
-        anim.SetBool("WorkerGather", false);
+        //sprite = GetComponent<SpriteRenderer>();
+        //boxCollider = GetComponent<BoxCollider2D>();
+        //rb2D = GetComponent<Rigidbody2D>();
+        //anim.SetBool("WorkerGather", false);
         //UpdateMoveSpeed(GameManager.instance.speedMult);
     }
 }

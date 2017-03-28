@@ -4,8 +4,11 @@ using System.Collections;
 public class Entity : MonoBehaviour {
 
     public int maxHP;
+    [HideInInspector]public int currentHP;
+    public int maxDmg;
+    public int minDmg;
+    public float attackFrequency;
 
-    int currentHP;
     float healthBarLength, healthBarHeight;
     Texture2D texture, texture2;
     Color[] colourArray;
@@ -65,13 +68,26 @@ public class Entity : MonoBehaviour {
 
     }
 
+    public void Attack(Entity target)
+    {
+        int thisAtkDmg = Random.Range(minDmg, maxDmg);
+        target.LoseLife(thisAtkDmg);
+    }
+
     public void LoseLife(int amount)
     {
         currentHP -= amount;
         if(currentHP <= 0)
         {
+            currentHP = 0;
             this.gameObject.SetActive(false);
-            Destroy(this.gameObject);
+            //Destroy(this.gameObject);
+            if(this.GetComponent<Worker>() != null)
+            {
+                Worker worker = this.GetComponent<Worker>();
+                worker.destroy = true;
+                GameManager.instance.ProcessWorkers();
+            }
         }
     }
 

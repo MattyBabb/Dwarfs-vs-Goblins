@@ -19,12 +19,7 @@ enum buildable
 
 enum actionMenu
 {
-    nothing, building, upgrading, trading, buildBuilding, startTradeRoute, finaliseUpgrade, upgradingFood, upgradingStone, upgradingGold, upgradingWood, upgradingOre
-}
-
-public enum enemyType
-{
-    stealer, enemy
+    nothing, building, upgrading, trading, buildBuilding, startTradeRoute, finaliseUpgrade, upgradingFood, upgradingStone, upgradingGold, upgradingWood, upgradingOre, tower, towerMove
 }
 
 public class GameManager : MonoBehaviour
@@ -34,7 +29,6 @@ public class GameManager : MonoBehaviour
     public GameObject worker;
     public GameObject stealer;
     public GameObject enemy;
-    public LayerMask BlockingLayer;
     public LayerMask CameraRaycastLayerMask;
     public float gatherMult = 1f;
     public float speedMult = 1f;
@@ -91,7 +85,7 @@ public class GameManager : MonoBehaviour
     PathRequestManager requestManager;
     public static Dictionary<resource, int> resources = new Dictionary<resource, int>();
     public static Dictionary<resource, float> resourceUpgrades = new Dictionary<resource, float>();
-    List<GameObject> enemyTypes;
+    public List<GameObject> enemyTypes;
     float[] enemySpawnDetails;
     int enemySpawnInt;
     Vector2[] spawnAreas;
@@ -136,9 +130,6 @@ public class GameManager : MonoBehaviour
         resources[resource.stone] = 500;
         resources[resource.ore] = 0;
         resources[resource.building] = 0;
-        enemyTypes = new List<GameObject>();
-        enemyTypes.Add(enemy);
-        enemyTypes.Add(stealer);
         resourceUpgrades[resource.food] = 1;
         resourceUpgrades[resource.wood] = 1;
         resourceUpgrades[resource.gold] = 1;
@@ -167,6 +158,8 @@ public class GameManager : MonoBehaviour
         //FindPath(boardScript.marker, GetClosestBuilding(buildings, boardScript.marker).transform.position);
         SimplePool.Preload(worker, 100);
         SimplePool.Preload(wall, 100);
+        SimplePool.Preload(tradeRouteGO, 10);
+        SimplePool.Preload(enemy, 100);
 
         //this should come from the board manager, not hard coded like it is here
         costAmounts = new List<int[]>();
@@ -212,18 +205,18 @@ public class GameManager : MonoBehaviour
         costTypes.Add(new resource[] { resource.food, resource.wood });
         costAmounts.Add(new int[] { 100, 100 });
 
-        //this should also be passed in from the board script
+        //this should also be passed in from the board script - which buildings are buildable for the level
         buildingsBuildable = new buildable[] { buildable.farm, buildable.furnace, buildable.house, buildable.tower, buildable.wall};
         currentMenu = actionMenu.nothing;
 
         spawnAreas = new Vector2[] { new Vector2(rows, 1) };
 
         //enemy spawn details: time, position.x, position.y, enemyTypeNo
-        enemySpawnDetails = new float[] { 50.5f, columns, 1, 1, 100.25f, 1, rows, 1 };
+        enemySpawnDetails = new float[] { 500.5f, columns, 1, 1, 500.25f, 1, rows, 1 };
         
     }
 
-    void Update()
+    void Update() 
     {
 
         //workerTimer += Time.deltaTime;
@@ -238,12 +231,23 @@ public class GameManager : MonoBehaviour
 
         foodSlider.value = eatTimer;
 
-        if(enemySpawnDetails[enemySpawnInt] <= gameTime)
+        if(enemySpawnInt < enemySpawnDetails.Length && enemySpawnDetails[enemySpawnInt] <= gameTime)
         {
-            Vector2 spawnPos = new Vector2(enemySpawnDetails[enemySpawnInt + 1], enemySpawnDetails[enemySpawnInt + 2]);
+            Vector2 spawnPos = new Vector2(enemySpawnDetails[enemySpawnInt + 1], enemySpawnDetails[enemySpawnInt + 2]); 
             //SpawnEnemy(spawnPos, enemySpawnDetails[enemySpawnInt + 3]) //last int is enemy type
+
+            GameObject instance = SimplePool.Spawn(enemyTypes[(int)enemySpawnDetails[enemySpawnInt + 3]], spawnPos, Quaternion.identity) as GameObject;
             enemySpawnInt += 4;
-            //CreateAndMoveEnemy(boardScript.marker);
+            Enemy enemy = instance.GetComponent(typeof(Enemy)) as Enemy;
+            Stealer stealer = instance.GetComponent(typeof(Stealer)) as Stealer;
+
+            if(enemy != null)
+            {
+                enemy.Init();
+            }else if(stealer != null)
+            {
+                stealer.Init();
+            }
         }
 
         if (Input.GetMouseButtonUp(0) && currentMenu == actionMenu.buildBuilding && currentBuildingtoBuild == wall && !EventSystem.current.IsPointerOverGameObject())
@@ -253,7 +257,7 @@ public class GameManager : MonoBehaviour
         }
 
         
-
+        
         if (Input.GetMouseButtonDown(0) && !EventSystem.current.IsPointerOverGameObject())
         {
            
@@ -264,8 +268,8 @@ public class GameManager : MonoBehaviour
                 string hitTag = hit.collider.gameObject.tag;
                 if(hitTag == "Resource" || hitTag == "BuildingResource")
                 {
+                    RemoveHighlightedResource();
                     HighlightResource(hit);
-                    currentMenu = actionMenu.nothing; 
                 }
             }
             else if (currentMenu == actionMenu.buildBuilding && currentBuildingtoBuild == wall && hit.collider == null)
@@ -406,42 +410,41 @@ public class GameManager : MonoBehaviour
             //ProcessWorkers();
             halfSecondTimer = 0;
 
-            //cancels worker if one too many has been created
-            if(workers.Count > totalWorkers)
+            if (workers.Count > totalWorkers)
             {
-                currentResource.tempWorkers-= workers.Count - totalWorkers;
+                //cancels workers if one too many has been created
+                ControlWorkerCounts();
             }
 
             if (currentResource != null)
             {
-                if (currentResource.tempWorkers < currentResource.workerSlots.Count)
-                {
 
+                if (currentResource.workerSlots.Count >0 && currentResource.tempWorkers < currentResource.workerSlots.Count)
+                {
+                    //cancel worker
                     currentResource.workerSlots[currentResource.workerSlots.Count - 1].Cancel();
                 }
                     
                 else if (currentResource.tempWorkers > currentResource.workerSlots.Count)
                 {
-                    //GameObject closestBuilding = GetClosestBuilding(buildings, currentResource.transform.position, false, out path);
-                    Vector2 closestBuilding = GetCloseBuilding(currentResource.transform.position);
+                    //create worker
+
                     Worker closestCancelledWorker = GetClosestCancelledWorker(currentResource);
                     if (closestCancelledWorker != null && closestCancelledWorker.heldResourceAmount == 0)
                     {
-                        float workerDistance, buildingDistance;
+                        float workerDistance;
 
                         workerDistance = GetDistance(closestCancelledWorker.transform.position, currentResource.transform.position)/10;
-                        buildingDistance = GetBuildingDistance(buildings, currentResource.transform.position);
 
-                        if (workerDistance < buildingDistance)
+                        if (workerDistance < currentResource.pathDistance)
                         {
                             closestCancelledWorker.StopAllCoroutines();
                             closestCancelledWorker.targetResource = currentResource;
                             closestCancelledWorker.Uncancel();
                             currentResource.AddWorkerToSlot(closestCancelledWorker);
                         }
-
                     }
-                    else if (closestBuilding != new Vector2(0,0))
+                    else
                         CreateWorkers(currentResource, currentResource.workerSlots.Count + 1);
                 }
             }
@@ -459,7 +462,27 @@ public class GameManager : MonoBehaviour
 
     public void OnGUI()
     {
-        if (currentMenu == actionMenu.nothing)
+        if(currentMenu == actionMenu.tower)
+        {
+            Tower tower = currentResource.GetComponent<Tower>();
+            if (tower.canMove)
+            {
+                buildingInfoText.text = "";
+                if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 80), "Move Tower"))
+                {
+                    currentMenu = actionMenu.towerMove;
+                }
+            }
+            else
+            {
+                currentMenu = actionMenu.nothing;
+            }
+        }
+        else if(currentMenu == actionMenu.towerMove)
+        {
+            //display move speed in buildinginfotext, cancel button and information like the tower can't fire while moving
+        }
+        else if (currentMenu == actionMenu.nothing)
         {
             buildingInfoText.text = "";
             if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 80), "Build Buildings"))
@@ -645,7 +668,8 @@ public class GameManager : MonoBehaviour
 
                 if (valid)
                 {
-                    GameObject instance = Instantiate(tradeRouteGO, boardScript.homeBase.transform.position, Quaternion.identity) as GameObject;
+                    //GameObject instance = Instantiate(tradeRouteGO, boardScript.homeBase.transform.position, Quaternion.identity) as GameObject;
+                    GameObject instance = SimplePool.Spawn(tradeRouteGO, boardScript.homeBase.transform.position, Quaternion.identity);
                     TradeRoute theTradeRoute = instance.GetComponent<TradeRoute>();
                     theTradeRoute.Init(tradeRouteDestinations[currentTradeRoute], costAmounts[currentTradeRoute], costTypes[currentTradeRoute],
                         deliverAmounts[currentTradeRoute], deliverTypes[currentTradeRoute], 5);
@@ -739,6 +763,28 @@ public class GameManager : MonoBehaviour
                             StartCoroutine(FlashText(workerText, 0.5f, ""));
                     }
                 }
+            }
+        }
+    }
+
+    //needs fixing
+    void ControlWorkerCounts()
+    {
+        GameObject[] resources = GameObject.FindGameObjectsWithTag("Resource");
+        foreach (GameObject resource in resources)
+        {
+            Resources theResource = resource.GetComponent<Resources>();
+            if (theResource.workerSlots.Count > 1 && theResource != currentResource)
+            {
+                for (int i = 0; i < theResource.workerSlots.Count; i++)
+                {
+                    theResource.workerSlots[i].Cancel();
+                    theResource.tempWorkers--;
+                }
+            }
+            if (workers.Count <= totalWorkers)
+            {
+                continue;
             }
         }
     }
@@ -881,6 +927,7 @@ public class GameManager : MonoBehaviour
         highlightedBox.transform.position = new Vector2(-10, -10);
         currentResource = null;
         UpdateHighlightedText(null);
+        currentMenu = actionMenu.nothing;
     }
 
     private void CreateConstructionSite(Vector2 clickPosition)
@@ -923,9 +970,14 @@ public class GameManager : MonoBehaviour
         return (new Vector2(tMin.transform.position.x, tMin.transform.position.y) - worker).sqrMagnitude;
     }
 
-    //need to update to spread for each resource type
     private void UpdateResourceGatherAmount( resource upgradeType, float mult)
     {
+        if(upgradeType == resource.none)
+        {
+            speedMult *= mult;
+            UpdateWorkerMoveSpeed();
+            return;
+        }
         GameObject[] resources = GameObject.FindGameObjectsWithTag("Resource");
         resourceUpgrades[upgradeType] *= mult;
         foreach (GameObject resource in resources)
@@ -947,7 +999,7 @@ public class GameManager : MonoBehaviour
     {
         foreach (Worker worker in workers)
         {
-            worker.UpdateMoveSpeed(speedMult);
+            worker.GetComponent<MovingObject>().UpdateMoveSpeed(speedMult);
         }
         currentMenu = actionMenu.nothing;
     }
@@ -958,7 +1010,12 @@ public class GameManager : MonoBehaviour
         
         //if (worker.targetResource == currentResource)  
         //    currentResource.tempWorkers--;
-        //worker.targetResource.RemoveWorkerFromSlot(worker);
+        if(worker.targetResource != null)
+        {
+            worker.targetResource.RemoveWorkerFromSlot(worker);
+            worker.targetResource.tempWorkers--;
+        }
+            
         workers.RemoveAt(position);
         SimplePool.Despawn(worker.gameObject);
         PrintWorkers();
@@ -989,9 +1046,12 @@ public class GameManager : MonoBehaviour
             worker = workers[i];
             if (worker.destroy)
             {
+                if(worker.GetComponent<Entity>().currentHP <= 0)
+                {
+                    totalWorkers--;
+                }
                 DestroyWorker(worker, i);
             }
-
         }
     }
 
@@ -1022,7 +1082,7 @@ public class GameManager : MonoBehaviour
             requestManager.FinishedProcessingPath(testPath, minDistance, true);
     }
 
-    Vector2 GetCloseBuilding(Vector2 resource)
+    public Vector2 GetCloseBuilding(Vector2 resource)
     {
         buildings = GameObject.FindGameObjectsWithTag("Building");
         GameObject tMin = null;
@@ -1070,16 +1130,32 @@ public class GameManager : MonoBehaviour
             {
                 resourceType = highlightedResource.resourceType.ToString();
             }
-            highlightedText.text = "Resource\nType: " + resourceType + "\nRemaining: " +
+
+            //typical resource
+            if(highlightedResource.gameObject.tag == "Resource")
+            {
+                highlightedText.text = "Resource\nType: " + resourceType + "\nRemaining: " +
                     (int)Mathf.Round(highlightedResource.resourcesRemaining) + "\nWorkers: " + highlightedResource.workerSlots.Count +
                     "\nGather Rate: " + highlightedResource.gatherAmount + "\nGather Time: " + highlightedResource.gatherTime;
+            }
+            else if (highlightedResource.gatherAmount > 0)
+            {
+                highlightedText.text = "Resource\nType: " + resourceType + "\nWorkers: " + highlightedResource.workerSlots.Count +
+                    "\nGather Rate: " + highlightedResource.gatherAmount + "\nGather Time: " + highlightedResource.gatherTime;
+            }
+            else
+            {
+                highlightedText.text = "Resource\nWorkers: " + highlightedResource.workerSlots.Count +
+                    "\nDamage: " + highlightedResource.GetComponent<Entity>().minDmg + " - " + highlightedResource.GetComponent<Entity>().maxDmg + "\nAttack Spd: " + highlightedResource.gatherTime
+                    + "\nHitPoints: " + highlightedResource.GetComponent<Entity>().currentHP;
+            }
         }
         else
             highlightedText.text = "Resource\nType: \nRemaining: \nWorkers: \nGather Rate: \nGather Time: ";
 
     }
 
-    void HighlightResource(RaycastHit2D clickPosition)
+    public void HighlightResource(RaycastHit2D clickPosition)
     {
         
         if (currentResource != null)
@@ -1099,6 +1175,10 @@ public class GameManager : MonoBehaviour
         //tempWorkers = resource.workerSlots.Count;
         UpdateHighlightedText(resource);
         highlightedBox.transform.position = new Vector2(currentResource.transform.position.x, currentResource.transform.position.y);
+        if(currentResource.GetComponent<Tower>() != null)
+        {
+            currentMenu = actionMenu.tower;
+        }
         //}
     }
 
@@ -1135,6 +1215,7 @@ public class GameManager : MonoBehaviour
         StartCoroutine(GetFastestPath(targetPos, startPos, dps, toBuilding));
     }
 
+    //todo: round the start and end vectors! this should fix the worker path finding after a building is built
     private List<Vector2> FindPath(Vector2 start, Vector2 end, int dps ,out float distance)
     {
         bool pathSuccess = false, easyPath = false;
@@ -1259,7 +1340,7 @@ public class GameManager : MonoBehaviour
         RaycastHit2D hit;
         temp = currentNode.position;
         path.Add(end);
-        hit = Physics2D.Linecast(temp, end, BlockingLayer);
+        hit = Physics2D.Linecast(temp, end);
         if(hit.collider != null)
             path.Add(endNode.position);
         
@@ -1270,7 +1351,7 @@ public class GameManager : MonoBehaviour
         do
         {
             tempParent = currentNode.parent.position;
-            hit = Physics2D.Linecast(temp, tempParent, BlockingLayer);
+            hit = Physics2D.Linecast(temp, tempParent);
             if (hit.collider != null)
             {
                 path.Add(currentNode.position);
@@ -1307,7 +1388,7 @@ public class GameManager : MonoBehaviour
                     if (ray.collider != null)
                     {
                         string hitTag = ray.collider.gameObject.tag;
-                        if ((hitTag == "Building" || hitTag == "BuildingResource" || hitTag == "Forts") && dps > 0)
+                        if ((hitTag == "Building" || hitTag == "BuildingResource" || hitTag == "Fort") && dps > 0)
                         {
                             Entity entity = ray.collider.gameObject.GetComponent<Entity>();
                             neighbours.Add(new Node(x, y, entity.maxHP / dps));
