@@ -1,9 +1,8 @@
-﻿using UnityEngine;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
-using System;
+using UnityEngine;
 
-public class Enemy : Worker
+public class Troop : Worker
 {
 
     public bool flying;
@@ -16,9 +15,13 @@ public class Enemy : Worker
         currentState = state.movingToTarget;
         //locations = Array.ConvertAll(GameObject.FindGameObjectsWithTag("Building"), item => new Vector2(item.transform.position.x, item.transform.position.y));
         //PathRequestManager.RequestPath(transform.position, locations, 0, true, OnPathFound);
-        thisMovingObject.MoveToClosestObject(GameObject.FindGameObjectsWithTag("Building"));
-        
+        //thisMovingObject.MoveToClosestObject(GameObject.FindGameObjectsWithTag("Building"));
+
+
+        //todo: move to enemy building
     }
+
+
 
     void Awake()
     {
@@ -38,7 +41,7 @@ public class Enemy : Worker
             float dist = (worker.transform.position - currentPos).sqrMagnitude;
             if (dist < minDist)
             {
-                if(tag == "Worker")
+                if (tag == "Worker")
                 {
                     if (worker.GetComponent<Worker>().currentState != state.inBuilding)
                     {
@@ -51,7 +54,7 @@ public class Enemy : Worker
                     tMin = worker;
                     minDist = dist;
                 }
-                
+
             }
         }
         return tMin;
@@ -71,18 +74,19 @@ public class Enemy : Worker
     }
 
     // Update is called once per frame
-    void Update ()
+    void Update()
     {
         if (isActiveAndEnabled)
         {
             oneSecondTimer += Time.deltaTime;
-            
+
             if (oneSecondTimer >= 1.0f)
             {
                 oneSecondTimer = 0f;
                 nearestWorker = GetClosestObjectWithTag("Worker");
                 nearestTradeRoute = GetClosestObjectWithTag("TradeRoute");
-                if(currentState != state.inBattle)
+                //todo: find nearest opposing unit
+                if (currentState != state.inBattle)
                 {
                     if (target == null)
                     {
@@ -141,7 +145,7 @@ public class Enemy : Worker
                     if (currentState == state.inBattle)
                     {
                         this.GetComponent<Entity>().Attack(target.GetComponent<Entity>());
-                        if(target.GetComponent<Entity>().currentHP <= 0)
+                        if (target.GetComponent<Entity>().currentHP <= 0)
                         {
                             target = null;
                             Init();
@@ -154,17 +158,17 @@ public class Enemy : Worker
                 }
             }
 
-            if(currentState == state.movingToTarget && target != null)
+            if (currentState == state.movingToTarget && target != null)
             {
-                if((target.transform.position - transform.position).sqrMagnitude < attackRange)
+                if ((target.transform.position - transform.position).sqrMagnitude < attackRange)
                 {
                     currentState = state.inBattle;
                 }
             }
-            else if(currentState == state.inBattle)
+            else if (currentState == state.inBattle)
             {
                 Attack();
             }
         }
-	}
+    }
 }

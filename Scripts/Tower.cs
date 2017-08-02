@@ -8,20 +8,35 @@ public class Tower : Resources
     public float firingDistance;
     public string enemyTag;
     public bool canMove;
-  
+    public string movementText;
+    public int damage;
+    public bool aoe;
+    public float explosionRadius;
+    public int level;
+
+
     protected float fireRateTimer;
     protected GameObject[] enemies;
     protected GameObject currentTarget;
     protected int safetyBuffer = 2;
     protected float checkTimer = 0.5f;
+    protected Vector2 previousPos;
     static protected float restTimer = 0.5f;
     MovingObject thisMovingObject;
+    Animator anim;
+    int activeWorkers;
+    bool moving;
 
     void Awake()
     {
         path = new List<Vector2>();
+        thisMovingObject = GetComponent<MovingObject>();
+        //thisMovingObject.IsMovingAnimation(false);
+        anim = GetComponent<Animator>();
+        moving = false;
+        anim.SetBool("Move", false);
     }
-
+     
     protected GameObject GetNearestEnemy()
     {
         enemies = GameObject.FindGameObjectsWithTag(enemyTag);
@@ -42,7 +57,20 @@ public class Tower : Resources
 
     public void Move(Vector2 location)
     {
+        anim.enabled = true;
         //todo: move to target location if workers > 0
+        if(workerSlots.Count > 1)
+        {
+            thisMovingObject.MoveToLocation(location);
+            thisMovingObject.IsMovingAnimation(true);
+            foreach(Worker worker in workerSlots)
+            {
+                worker.transform.position = location;
+                worker.SpriteEnabled(false);
+            }
+            moving = true;
+            gameObject.tag = "Untagged";
+        }
     }
 
     protected float GetDistance(GameObject otherObject)
@@ -53,51 +81,104 @@ public class Tower : Resources
     protected void Fire()
     {
         if (currentTarget != null)
-            this.GetComponent<Entity>().Attack(currentTarget.GetComponent<Entity>());
+        {
+            if (GetComponent<ProjectileLauncher>() != null)
+            {
+                ProjectileLauncher thisProjectile = GetComponent<ProjectileLauncher>();
+                Vector2 fireDirection = thisProjectile.FireProjectile(1, previousPos, gameObject, currentTarget.GetComponent<MovingObject>(), GameManager.instance.gravity);
+                GameObject instance = SimplePool.Spawn(thisProjectile.projectile, transform.position, Quaternion.identity) as GameObject;
+                //GameObject aProjectile = (GameObject)Instantiate(thisProjectile.projectile, transform.position, Quaternion.identity);
+                instance.GetComponent<Projectile>().Init(fireDirection.magnitude, fireDirection / fireDirection.magnitude, GameManager.instance.gravity, level, explosionRadius, damage, currentTarget.GetComponent<Entity>());
+            }
 
-        // play fire animation
+        }
     }
 
     //this is just a placeholder for the workers
     public override void ReduceResources(float amount)
-    {
+    { 
     }
 
     void Update ()
     {
-        if(currentTarget != null)
+        if (!moving)
         {
-            fireRateTimer += Time.deltaTime;
-            if(workerSlots.Count > 0 && fireRateTimer >= gatherTime / workerSlots.Count)
+            if (currentTarget != null)
             {
-                Fire();
-                fireRateTimer = 0;
-            }
-        }
-        else if(checkTimer <= 0 && currentTarget == null)
-        {
-            GameObject thisEnemy = GetNearestEnemy();
-            if(thisEnemy != null)
-            {
-                float distance = GetDistance(thisEnemy);
-                if (distance > firingDistance + safetyBuffer)
+                fireRateTimer += Time.deltaTime;
+                checkTimer -= Time.deltaTime;
+                
+
+                if (checkTimer <= 0)
                 {
                     checkTimer += restTimer;
+                    activeWorkers = 0;
+                    foreach (Worker worker in workerSlots)
+                    {
+                        if (worker.currentState == state.inBuilding)
+                            activeWorkers++;
+                    }
                 }
-                else if (distance <= firingDistance)
+                if(currentTarget.GetComponent<Entity>().currentHP <= 0)
                 {
-                    currentTarget = thisEnemy;
+                    currentTarget = null;
+                }
+                if (activeWorkers > 0 && fireRateTimer >= gatherTime / activeWorkers && previousPos != (Vector2)currentTarget.transform.position)
+                {
+                    Fire();
+                    fireRateTimer = 0;
+                    float distance = GetDistance(currentTarget);
+                    if (distance > firingDistance)
+                    {
+                        currentTarget = null;
+                    }
+                    
+                }
+                
+            }
+            else if (checkTimer <= 0 && currentTarget == null)
+            {
+                GameObject thisEnemy = GetNearestEnemy();
+                if (thisEnemy != null)
+                {
+                    float distance = GetDistance(thisEnemy);
+                    if (distance > firingDistance + safetyBuffer)
+                    {
+                        checkTimer += restTimer;
+                    }
+                    else if (distance <= firingDistance)
+                    {
+                        currentTarget = thisEnemy;
+                        checkTimer += restTimer;
+                    }
+                }
+                else
+                {
+                    //reset checker
+                    checkTimer += restTimer;
                 }
             }
-            else
-            {
-                //reset checker
-                checkTimer += restTimer;
+            else if (currentTarget == null)
+            {  
+                checkTimer -= Time.deltaTime;
             }
+            if (currentTarget != null)
+                previousPos = currentTarget.transform.position;
         }
-        else if(currentTarget == null)
+        else if (thisMovingObject.path.Count > 0 && (thisMovingObject.path[thisMovingObject.path.Count-1] - (Vector2)transform.position).sqrMagnitude < Mathf.Epsilon)
         {
-            checkTimer -= Time.deltaTime;
+            //position arrived at!
+            thisMovingObject.path = new List<Vector2>();
+            moving = false;
+            thisMovingObject.IsMovingAnimation(false);
+            gameObject.tag = "BuildingResource";
+            foreach (Worker worker in workerSlots)
+            {
+                worker.SpriteEnabled(true);
+            }
+
         }
-	}
+       
+
+    }
 }

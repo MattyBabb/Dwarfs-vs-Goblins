@@ -5,12 +5,13 @@ using System.Collections.Generic;
 
 public class BoardManager : MonoBehaviour
 {
+
     [Serializable]
     public class Count
     {
         public int minimum, maximum;
 
-        public Count (int min, int max)
+        public Count(int min, int max)
         {
             minimum = min;
             maximum = max;
@@ -29,13 +30,15 @@ public class BoardManager : MonoBehaviour
     public GameObject[] mountainTiles;
     public GameObject[] playerBase;
     public GameObject[] stoneTiles;
-    public GameObject gold;
+    public GameObject[] gold;
     public GameObject[] Castle;
 
-    public GameObject homeBase;
     private Transform boardHolder;
     public List<Vector2> gridPositions = new List<Vector2>();
     public Vector2 marker;
+    [HideInInspector]
+    public GameObject homeBase;
+
 
     void initialiseList()
     {
@@ -52,7 +55,7 @@ public class BoardManager : MonoBehaviour
     void BoardSetup()
     {
         boardHolder = new GameObject("Board").transform;
-        for(int x = 0; x < columns +1; x++)
+        for (int x = 0; x < (columns + 1)*2; x++)
         {
             for (int y = 0; y < rows + 1; y++)
             {
@@ -71,17 +74,18 @@ public class BoardManager : MonoBehaviour
         return randomPosition;
     }
 
-    Vector2 GetRandomBorderPosition()
+    void LayoutObjectAtRandomLeftBorder(GameObject[] tile)
     {
         int randomIndex = Random.Range(0, gridPositions.Count);
-        Vector2 retVal = gridPositions[randomIndex];
-        while (retVal.x != 0f && retVal.y != 0f && retVal.x != columns && retVal.y != rows)
+        Vector2 randomPosition = gridPositions[randomIndex];
+        while (randomPosition.x != 0f)
         {
             randomIndex = Random.Range(0, gridPositions.Count);
-            retVal = gridPositions[randomIndex];
+            randomPosition = gridPositions[randomIndex];
         }
         gridPositions.RemoveAt(randomIndex);
-        return retVal;
+        Instantiate(tile[0], randomPosition, Quaternion.identity);
+        MirrorObject(randomPosition, tile[0]);
     }
 
     void layoutObjectAtRandom(GameObject[] tileArray, int min, int max)
@@ -92,61 +96,27 @@ public class BoardManager : MonoBehaviour
             Vector2 randomPostion = RandomPosition();
             GameObject tileChoice = tileArray[Random.Range(0, tileArray.Length)];
             Instantiate(tileChoice, randomPostion, Quaternion.identity);
+            MirrorObject(randomPostion, tileChoice);
         }
     }
 
-    void PlaceGoldInOppositeCorner(Transform trans, GameObject gold)
+    void MirrorObject(Vector2 position, GameObject tile)
     {
-        //int gridPos = (int)(trans.position.x * trans.position.y);
-        int randomIndex;
-        Vector2 randomPos;
-        bool acceptable = false;
-        int i = 0;
-        int distance = 2;
-        do
-        {
-            randomIndex = Random.Range(0, gridPositions.Count);
-            randomPos = gridPositions[randomIndex];
-            if ((Math.Abs(randomPos.x - trans.position.x) + Math.Abs(randomPos.y - trans.position.y)) > ((columns + rows) / distance))
-            {
-                acceptable = true;
-            }
-            i++;
-            if(i > 100)
-            {
-                distance++;
-            }
-        }
-        while (!acceptable);
-        gridPositions.RemoveAt(randomIndex);
-        Instantiate(gold, randomPos, Quaternion.identity);
-    }
-
-    void PlaceMarker(Vector2 position, GameObject gold)
-    {
-        Instantiate(gold, position, Quaternion.identity);
+        position.x = (columns * 2) + 1 - position.x;
+        Instantiate(tile, position, Quaternion.identity);
     }
 
 
-
-    Transform GetTransform (string tag)
-    {
-        GameObject house = GameObject.FindGameObjectWithTag(tag);
-        return house.transform;
-    }
-
-	public void SetupScene ()
+    public void SetupScene(int level)
     {
         BoardSetup();
         initialiseList();
-        marker = GetRandomBorderPosition();
+        LayoutObjectAtRandomLeftBorder(Castle);
+        homeBase = Castle[0];
         layoutObjectAtRandom(waterTiles, waterCount.minimum, waterCount.maximum);
         layoutObjectAtRandom(stoneTiles, stoneCount.minimum, stoneCount.maximum);
         layoutObjectAtRandom(treeTiles, treeCount.minimum, treeCount.maximum);
         layoutObjectAtRandom(mountainTiles, mountainCount.minimum, mountainCount.maximum);
-        layoutObjectAtRandom(Castle, 1, 1);
-        Transform trans = GetTransform("Building");
-        homeBase = GameObject.FindGameObjectWithTag("Building");
-        PlaceGoldInOppositeCorner(trans, gold);
+        layoutObjectAtRandom(gold, 1, 1);
     }
 }

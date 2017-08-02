@@ -6,6 +6,7 @@ using Random = UnityEngine.Random;
 using UnityEngine.EventSystems;
 using System;
 using System.Diagnostics;
+using UnityEngine.SceneManagement;
 
 public enum resource
 {
@@ -19,7 +20,7 @@ enum buildable
 
 enum actionMenu
 {
-    nothing, building, upgrading, trading, buildBuilding, startTradeRoute, finaliseUpgrade, upgradingFood, upgradingStone, upgradingGold, upgradingWood, upgradingOre, tower, towerMove
+    nothing, building, upgrading, trading, buildBuilding, startTradeRoute, finaliseUpgrade, upgradingFood, upgradingStone, upgradingGold, upgradingWood, upgradingOre, tower, towerMove, towerBuilding, loading
 }
 
 public class GameManager : MonoBehaviour
@@ -29,6 +30,7 @@ public class GameManager : MonoBehaviour
     public GameObject worker;
     public GameObject stealer;
     public GameObject enemy;
+    public GameObject fireball;
     public LayerMask CameraRaycastLayerMask;
     public float gatherMult = 1f;
     public float speedMult = 1f;
@@ -36,14 +38,18 @@ public class GameManager : MonoBehaviour
     public GameObject furnace;
     public GameObject farm;
     public GameObject wall;
-    public GameObject tower;
+    public GameObject gunTower;
+    public GameObject cannonTower;
     public Sprite filledWorker;
     public Sprite EmptyWorker;
     public GameObject highlightBox;
     public GameObject tradeRouteGO;
     public float startingCameraSize;
     public float currentCameraSize;
+    public Texture[] resourceIcons;
 
+    //[HideInInspector]
+    public float gravity;
     private float eatCycle = 10;
     private float eatTimer = 0.0f;
     public List<Worker> workers;
@@ -51,12 +57,16 @@ public class GameManager : MonoBehaviour
     private int workerCount;
     private float oneSecondTimer = 0f;
     private float halfSecondTimer = 0f;
-    private int foodEatenPerWorker = 1;
+    private int foodEatenPerWorker = 2;
     private Text resourceText;
     private Text workerText;
     private Text highlightedText;
     private Text gameTimeText;
     private Text buildingInfoText;
+    private Text baddieText;
+    private Text goalText;
+    private GameObject levelImage;
+    private Text levelText;
     private Slider foodSlider;
     private Text sliderText;
     public GameObject[] buildings;
@@ -79,11 +89,13 @@ public class GameManager : MonoBehaviour
     float scrollSensitivity = 1f;
     float mouseScroll;
     float pathDistance;
+    float levelStartDelay = 2f;
     Vector2 dragStartPosition;
     List<GameObject> previewWallGameObjects;
     int numberofBuildingsPurchaseable;  
     PathRequestManager requestManager;
     public static Dictionary<resource, int> resources = new Dictionary<resource, int>();
+    public static Dictionary<resource, Texture> resourceTextures = new Dictionary<resource, Texture>();
     public static Dictionary<resource, float> resourceUpgrades = new Dictionary<resource, float>();
     public List<GameObject> enemyTypes;
     float[] enemySpawnDetails;
@@ -99,6 +111,10 @@ public class GameManager : MonoBehaviour
     int currentTradeRoute;
     resource currentUpgrade;
     resource[] upgradeOrder;
+    Dictionary<object, int> goals;
+    int currentLevelNo;
+    bool loadResourceIcons = true;
+
 
     void Awake()
     {
@@ -109,27 +125,31 @@ public class GameManager : MonoBehaviour
         previewWallGameObjects = new List<GameObject>();
         DontDestroyOnLoad(gameObject);
         boardScript = GetComponent<BoardManager>();
-        InitGame();
+        //InitGame();
+        currentLevelNo = 1;
         constructingBuilding = false;
         workers = new List<Worker>();
-        Instantiate(highlightBox, new Vector2(-10, -10), Quaternion.identity);
-        highlightedBox = Instantiate(highlightBox, new Vector2(-10, -10), Quaternion.identity) as GameObject;
-        //print(highlightBox.GetComponent<SpriteRenderer>().isVisible);
-        startingCameraSize = Camera.main.orthographicSize;
-        currentCameraSize = startingCameraSize;
-        
+        Instantiate(highlightBox, new Vector2(-10, -10), Quaternion.identity);        
     }
 
     void InitGame()
     {
         enemySpawnInt = 0;
-        resources[resource.food] = 1000;
-        resources[resource.wood] = 1000;
-        resources[resource.gold] = 0;
-        resources[resource.metal] = 0;
-        resources[resource.stone] = 500;
+        resources[resource.food] = 500;
         resources[resource.ore] = 0;
+        resources[resource.wood] = 2000;
+        resources[resource.stone] = 0;
+        resources[resource.metal] = 0;
+        resources[resource.gold] = 0;
+        resourceTextures[resource.food] = resourceIcons[0];
+        resourceTextures[resource.ore] = resourceIcons[1];
+        resourceTextures[resource.wood] = resourceIcons[2];
+        resourceTextures[resource.stone] = resourceIcons[3];
+        resourceTextures[resource.metal] = resourceIcons[4];
+        resourceTextures[resource.gold] = resourceIcons[5];
+
         resources[resource.building] = 0;
+
         resourceUpgrades[resource.food] = 1;
         resourceUpgrades[resource.wood] = 1;
         resourceUpgrades[resource.gold] = 1;
@@ -137,7 +157,7 @@ public class GameManager : MonoBehaviour
         resourceUpgrades[resource.stone] = 1;
         resourceUpgrades[resource.ore] = 1;
         resourceUpgrades[resource.building] = 1;
-        boardScript.SetupScene();
+        boardScript.SetupScene(currentLevelNo);
         columns = boardScript.columns;
         rows = boardScript.rows;
         gridPositions = boardScript.gridPositions;
@@ -149,6 +169,13 @@ public class GameManager : MonoBehaviour
         sliderText = GameObject.Find("SliderText").GetComponent<Text>();
         gameTimeText = GameObject.Find("GameTimeText").GetComponent<Text>();
         buildingInfoText = GameObject.Find("BuildingInfoText").GetComponent<Text>();
+        baddieText = GameObject.Find("BaddieText").GetComponent<Text>();
+        goalText = GameObject.Find("GoalText").GetComponent<Text>();
+        levelImage = GameObject.Find("LevelImage");
+        levelText = GameObject.Find("LevelText").GetComponent<Text>();
+        highlightedBox = Instantiate(highlightBox, new Vector2(-10, -10), Quaternion.identity) as GameObject;
+        startingCameraSize = Camera.main.orthographicSize;
+        currentCameraSize = startingCameraSize;
 
         PrintResources();
         PrintWorkers();
@@ -160,6 +187,8 @@ public class GameManager : MonoBehaviour
         SimplePool.Preload(wall, 100);
         SimplePool.Preload(tradeRouteGO, 10);
         SimplePool.Preload(enemy, 100);
+        SimplePool.Preload(fireball, 200);
+        
 
         //this should come from the board manager, not hard coded like it is here
         costAmounts = new List<int[]>();
@@ -212,8 +241,62 @@ public class GameManager : MonoBehaviour
         spawnAreas = new Vector2[] { new Vector2(rows, 1) };
 
         //enemy spawn details: time, position.x, position.y, enemyTypeNo
-        enemySpawnDetails = new float[] { 500.5f, columns, 1, 1, 500.25f, 1, rows, 1 };
+        goals = new Dictionary<object, int>();
+
+        //goals
+        if (currentLevelNo == 1)
+        {
+            
+            goals[house.GetComponent<ConstructionSite>().Building] = 2;
+            goals[resource.food] = 105; //new KeyValuePair<resource, int>(resource.food, 100);
+            enemySpawnDetails = new float[] { };
+        }
+        else if(currentLevelNo == 2)
+        {
+            goals[0] = 240;
+            //firstspawntime, spawnrate, no. of enemies to spawn, positionx, positiony, type
+            enemySpawnDetails = new float[] { 35f, 3.0f, 10f, columns, 1, 1};
+        }
         
+
+        goalText.text = "Goals: ";
+        foreach (KeyValuePair<object, int> goal in goals)
+        {
+            goalText.text += PrintGoal(goal) + "\n";
+            
+        }
+        levelText.text = "Level " + currentLevelNo;
+        levelImage.SetActive(true);
+        currentMenu = actionMenu.loading;
+        Invoke("HideLevelImage", levelStartDelay);
+    }
+
+    private void HideLevelImage()
+    {
+        levelImage.SetActive(false);
+        currentMenu = actionMenu.nothing;
+    }
+    IEnumerator SpawnEnemy(int enemyType, Vector2 spawnPos, int repeatNumber, float repeatRate)
+    {
+
+        for (int i = 0; i < repeatNumber; i++)
+        {
+            GameObject instance = SimplePool.Spawn(enemyTypes[enemyType], spawnPos, Quaternion.identity) as GameObject;
+
+            Enemy enemy = instance.GetComponent(typeof(Enemy)) as Enemy;
+            Stealer stealer = instance.GetComponent(typeof(Stealer)) as Stealer;
+
+            if (enemy != null)
+            {
+                enemy.Init();
+            }
+            else if (stealer != null)
+            {
+                stealer.Init();
+            }
+            yield return new WaitForSeconds(repeatRate);
+        }
+
     }
 
     void Update() 
@@ -233,26 +316,27 @@ public class GameManager : MonoBehaviour
 
         if(enemySpawnInt < enemySpawnDetails.Length && enemySpawnDetails[enemySpawnInt] <= gameTime)
         {
-            Vector2 spawnPos = new Vector2(enemySpawnDetails[enemySpawnInt + 1], enemySpawnDetails[enemySpawnInt + 2]); 
+            Vector2 spawnPos = new Vector2(enemySpawnDetails[enemySpawnInt + 3], enemySpawnDetails[enemySpawnInt + 4]); 
             //SpawnEnemy(spawnPos, enemySpawnDetails[enemySpawnInt + 3]) //last int is enemy type
 
-            GameObject instance = SimplePool.Spawn(enemyTypes[(int)enemySpawnDetails[enemySpawnInt + 3]], spawnPos, Quaternion.identity) as GameObject;
-            enemySpawnInt += 4;
-            Enemy enemy = instance.GetComponent(typeof(Enemy)) as Enemy;
-            Stealer stealer = instance.GetComponent(typeof(Stealer)) as Stealer;
+            
 
-            if(enemy != null)
-            {
-                enemy.Init();
-            }else if(stealer != null)
-            {
-                stealer.Init();
-            }
+            StartCoroutine(SpawnEnemy((int)enemySpawnDetails[enemySpawnInt + 5], spawnPos, (int)enemySpawnDetails[enemySpawnInt + 2], enemySpawnDetails[enemySpawnInt + 1]));
+            enemySpawnInt += 6;
+ 
         }
 
         if (Input.GetMouseButtonUp(0) && currentMenu == actionMenu.buildBuilding && currentBuildingtoBuild == wall && !EventSystem.current.IsPointerOverGameObject())
         {
             currentMenu = actionMenu.nothing;
+            ConstructionSite site = currentBuildingtoBuild.GetComponent<ConstructionSite>();
+            for (int j = 0; j < previewWallGameObjects.Count; j++)
+            {
+                for (int i = 0; i < site.costs.Length; i++)
+                {
+                    ReduceResources(new KeyValuePair<resource, int>(site.types[i], site.costs[i]));
+                }
+            }
             previewWallGameObjects.Clear();
         }
 
@@ -268,8 +352,8 @@ public class GameManager : MonoBehaviour
                 string hitTag = hit.collider.gameObject.tag;
                 if(hitTag == "Resource" || hitTag == "BuildingResource")
                 {
-                    RemoveHighlightedResource();
-                    HighlightResource(hit);
+                        RemoveHighlightedResource();
+                        HighlightResource(hit);                    
                 }
             }
             else if (currentMenu == actionMenu.buildBuilding && currentBuildingtoBuild == wall && hit.collider == null)
@@ -279,9 +363,25 @@ public class GameManager : MonoBehaviour
             }
             else if (hit.collider == null && currentMenu == actionMenu.buildBuilding)
             {
+                if (BuildingPurchaseable(currentBuildingtoBuild))
+                {
+                    if (clickPosition.y >= -0.5 && clickPosition.y <= rows + 0.5 && clickPosition.x >= -0.5 && clickPosition.x <= columns + 0.5)
+                        CreateConstructionSite(clickPosition);
+                }
+                else
+                {
+                    StartCoroutine(FlashText(resourceText, 1.5f, "\nInsufficient Resources"));
+                    currentMenu = actionMenu.nothing;
+                }
+            }
+            else if (hit.collider == null && currentMenu == actionMenu.towerMove)
+            {
                 if (clickPosition.y >= -0.5 && clickPosition.y <= rows + 0.5 && clickPosition.x >= -0.5 && clickPosition.x <= columns + 0.5)
-                    CreateConstructionSite(clickPosition);
-            }            
+                {
+                    currentResource.GetComponent<Tower>().Move(new Vector2(Mathf.Round(clickPosition.x), Mathf.Round(clickPosition.y)));
+                    RemoveHighlightedResource();
+                }
+            }
             else
             {
                 RemoveHighlightedResource();
@@ -365,9 +465,7 @@ public class GameManager : MonoBehaviour
                     }
                 }
             }
-
         }
-
 
         if (oneSecondTimer >= 1)
         {
@@ -379,6 +477,34 @@ public class GameManager : MonoBehaviour
                 UpdateHighlightedText(currentResource);
                 PrintWorkers();
             }
+            if (enemySpawnInt < enemySpawnDetails.Length)
+            {
+                baddieText.text = "Next Baddie: " + (Convert.ToInt16(enemySpawnDetails[enemySpawnInt]) - gameTime);
+                if(enemySpawnDetails[enemySpawnInt] - gameTime < 10)
+                {
+                    FlashText(baddieText, 0.5f, "");
+                }
+            }
+            else
+                baddieText.text = "No More Baddies!";
+
+            bool goalCheck = true;
+
+            foreach (KeyValuePair<object, int> goal in goals)
+            {
+                if (!CheckGoal(goal))
+                {
+                    goalCheck = false;
+                }
+            }
+            if (goalCheck)
+            {
+                //you win! 
+                levelText.text = "Level " + currentLevelNo + " Passed!";
+                levelImage.SetActive(true);
+                SceneManager.LoadScene(0);
+            }
+
         }
 
         mouseScroll = Input.GetAxis("Mouse ScrollWheel");
@@ -460,9 +586,48 @@ public class GameManager : MonoBehaviour
 
     }
 
-    public void OnGUI()
+
+
+    //This is called each time a scene is loaded.
+    void OnLevelFinishedLoading(Scene scene, LoadSceneMode
+    mode)
     {
-        if(currentMenu == actionMenu.tower)
+        //Add one to our level number.
+        currentLevelNo++;
+        //Call InitGame to initialize our level.
+        InitGame();
+        workers.Clear();
+        PrintWorkers();
+    }
+    void OnEnable()
+    {
+        //Tell our ‘OnLevelFinishedLoading’ function to
+        //start listening for a scene change event as soon as
+    //this script is enabled.
+    SceneManager.sceneLoaded += OnLevelFinishedLoading;
+    }
+    void OnDisable()
+    {
+        //Tell our ‘OnLevelFinishedLoading’ function to stop
+       // listening for a scene change event as soon as this
+        //script is disabled.
+        //Remember to always have an unsubscription for every
+        //delegate you subscribe to!
+        SceneManager.sceneLoaded -= OnLevelFinishedLoading;
+    }
+
+public void OnGUI()
+    {
+        if(currentMenu != actionMenu.loading)
+        {
+            for (int i = 0; i < 6; i++)
+            {
+                GUI.DrawTexture(new Rect(5, 5 + (33 * i), 28, 28), resourceIcons[i], ScaleMode.StretchToFill, true, 10.0F);
+            }
+            loadResourceIcons = false;
+        }
+
+        if (currentMenu == actionMenu.tower)
         {
             Tower tower = currentResource.GetComponent<Tower>();
             if (tower.canMove)
@@ -470,7 +635,15 @@ public class GameManager : MonoBehaviour
                 buildingInfoText.text = "";
                 if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 80), "Move Tower"))
                 {
-                    currentMenu = actionMenu.towerMove;
+                    if(currentResource.workerSlots.Count > 1)
+                    {
+                        currentMenu = actionMenu.towerMove;
+                    }
+                    else
+                    {
+                        currentMenu = actionMenu.nothing;
+                    }
+                    
                 }
             }
             else
@@ -480,6 +653,8 @@ public class GameManager : MonoBehaviour
         }
         else if(currentMenu == actionMenu.towerMove)
         {
+            buildingInfoText.text = "\nMovement Speed: " + currentResource.GetComponent<MovingObject>().moveSpeed;
+            buildingInfoText.text += "\n\n" + currentResource.GetComponent<Tower>().movementText;
             //display move speed in buildinginfotext, cancel button and information like the tower can't fire while moving
         }
         else if (currentMenu == actionMenu.nothing)
@@ -498,81 +673,43 @@ public class GameManager : MonoBehaviour
             {
                 currentMenu = actionMenu.trading;
             }
+            if (GUI.Button(new Rect(Screen.width - 130, 390, 130, 80), "Build Towers"))
+            {
+                currentMenu = actionMenu.towerBuilding;
+            }
         } else if (currentMenu == actionMenu.building)
         {
             if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 80), "Build House"))
             {
-                if (BuildingPurchaseable(house))
-                {
-                    currentMenu = actionMenu.buildBuilding;
-                    currentBuildingtoBuild = house;
-                    PrintResources();
-                }
-                else
-                {
-                    StartCoroutine(FlashText(resourceText, 0.5f, "\nInsufficient Resources"));
-                }
+                currentMenu = actionMenu.buildBuilding;
+                currentBuildingtoBuild = house;
+                PrintResources();
 
             }
 
             if (GUI.Button(new Rect(Screen.width - 130, 230, 130, 80), "Build Furnace"))
             {
-                //resources[resource.wood] -= 50;
-                //resources[resource.stone] -= 30;
-                if (BuildingPurchaseable(furnace))
-                {
-                    currentBuildingtoBuild = furnace;
-                    currentMenu = actionMenu.buildBuilding;
-                    PrintResources();
-                }
-                else
-                {
-                    StartCoroutine(FlashText(resourceText, 0.5f, "\nInsufficient Resources"));
-                }
+                currentBuildingtoBuild = furnace;
+                currentMenu = actionMenu.buildBuilding;
+                PrintResources();
             }
-
-
-
+            
             if (GUI.Button(new Rect(Screen.width - 130, 310, 130, 80), "Build Farm"))
             {
-                if (BuildingPurchaseable(farm))
-                {
-                    currentBuildingtoBuild = farm;
-                    currentMenu = actionMenu.buildBuilding;
-                    PrintResources();
-                }
+                currentBuildingtoBuild = farm;
+                currentMenu = actionMenu.buildBuilding;
+                PrintResources();
 
             }
 
             if (GUI.Button(new Rect(Screen.width - 130, 390, 130, 80), "Build Wall"))
             {
-
-                if (BuildingPurchaseable(wall))
-                {
-                    currentBuildingtoBuild = wall;
-                    currentMenu = actionMenu.buildBuilding;
-                    PrintResources();
-                }
-                else
-                {
-                    StartCoroutine(FlashText(resourceText, 0.5f, "\nInsufficient Resources"));
-                }
+                currentBuildingtoBuild = wall;
+                currentMenu = actionMenu.buildBuilding;
+                PrintResources();
             }
 
-            if (GUI.Button(new Rect(Screen.width - 130, 470, 130, 80), "Build Tower"))
-            {
 
-                if (BuildingPurchaseable(tower))
-                {
-                    currentBuildingtoBuild = tower;
-                    currentMenu = actionMenu.buildBuilding;
-                    PrintResources();
-                }
-                else
-                {
-                    StartCoroutine(FlashText(resourceText, 0.5f, "\nInsufficient Resources"));
-                }
-            }
         }
         else if (currentMenu == actionMenu.trading)
         {
@@ -585,6 +722,22 @@ public class GameManager : MonoBehaviour
                     currentTradeRoute = i;
                 }
 
+            }
+        }
+        else if (currentMenu == actionMenu.towerBuilding)
+        {
+            if (GUI.Button(new Rect(Screen.width - 130, 150, 130, 80), "Gun Tower"))
+            {
+
+                currentBuildingtoBuild = gunTower;
+                currentMenu = actionMenu.buildBuilding;
+                PrintResources();
+            }
+            if (GUI.Button(new Rect(Screen.width - 130, 230, 130, 80), "Cannon"))
+            {
+                currentBuildingtoBuild = cannonTower;
+                currentMenu = actionMenu.buildBuilding;
+                PrintResources();
             }
         }
         else if (currentMenu == actionMenu.upgrading)
@@ -687,6 +840,18 @@ public class GameManager : MonoBehaviour
             }
 
         }
+        else if(currentMenu == actionMenu.towerMove)
+        {
+            buildingInfoText.text = "Move Speed: " + currentResource.GetComponent<MovingObject>().moveSpeed;
+            buildingInfoText.text += "\n\n" + currentResource.GetComponent<Tower>().movementText;
+            buildingInfoText.text += "\n\nClick Empty Space to Place";
+
+            //get current resource details and display them in the buildinginfo text
+            if (GUI.Button(new Rect(Screen.width - 65, 450, 65, 80), "Cancel"))
+            {
+                currentMenu = actionMenu.nothing;
+            }
+        }
         else if(currentMenu == actionMenu.finaliseUpgrade)
         {
             int upgradeNo = -1;
@@ -765,6 +930,64 @@ public class GameManager : MonoBehaviour
                 }
             }
         }
+
+
+    }
+
+    string PrintGoal(KeyValuePair<object, int> goal)
+    {
+        string retVal = "";
+        //if(goal != null)
+        //{
+        if(goal.Key is int)
+        {
+            retVal = "Survive until " + Mathf.Abs(goal.Value / 60) + ":" + (goal.Value % 60).ToString("00"); ;
+        }
+        else if(goal.Key is resource)
+        {
+            retVal = "Collect " + goal.Value + " " + goal.Key;
+        }
+        else if(goal.Key is GameObject)
+        {
+            GameObject value = goal.Key as GameObject;
+            retVal = "Build " + goal.Value + " " + value.name;
+            if(goal.Value > 1)
+            {
+                retVal += "s";
+            }
+        }
+        return retVal;
+    }
+
+    bool CheckGoal(KeyValuePair<object, int> goal)
+    {
+        bool retVal = true;
+        if (goal.Key is int)
+        {
+            retVal = gameTime >= goal.Value ? true : false;
+        }
+        else if (goal.Key is resource)
+        {
+            KeyValuePair<resource, int> value = new KeyValuePair<resource, int>((resource)goal.Key, goal.Value);
+            retVal = IsPurchaseable(value);
+        }
+        else if (goal.Key is GameObject)
+        {
+            int noHouses = 0;
+            GameObject value = goal.Key as GameObject;
+            GameObject[] objects = GameObject.FindGameObjectsWithTag("Building");
+            foreach (GameObject go in objects)
+            {
+                var GOtype = go.GetType();
+                var valuetype = value.GetType();
+                if (go.GetType() == value.GetType() && go.name.Contains(value.name))
+                    noHouses++;
+            }
+            retVal = noHouses >= goal.Value ? true : false;
+
+        }
+
+        return retVal;
     }
 
     //needs fixing
@@ -809,14 +1032,38 @@ public class GameManager : MonoBehaviour
 
     public void ReduceResources(KeyValuePair<resource, int> pair)
     {
-        resources[pair.Key] -= pair.Value;
-        PrintResources();
+        StartCoroutine(ChangeResources(pair, false));
     }
 
     public void AddResources(KeyValuePair<resource, int> pair)
+    {     
+
+        StartCoroutine(ChangeResources(pair, true));
+    }
+
+    protected IEnumerator ChangeResources(KeyValuePair<resource, int> pair, bool increase)
     {
-        resources[pair.Key] += pair.Value;
-        PrintResources();
+        float wait = 0.03f;
+        int amount = 1;
+        if (pair.Value >= 50)
+        {
+            wait = 0.005f;
+            amount++;
+        }
+
+        for (int i = 0; i < pair.Value; i++)
+        {
+                
+            if (increase)
+                resources[pair.Key]+= amount;
+            else
+                resources[pair.Key]-= amount;
+
+            if (amount > 1)
+                i++;
+            PrintResources();
+            yield return new WaitForSeconds(wait);
+        }
     }
 
     int NumberOfBuildingsPurchaseable(GameObject building)
@@ -910,7 +1157,8 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        resources[resource.food] -= workers.Count * foodEatenPerWorker;
+        //resources[resource.food] -= workers.Count * foodEatenPerWorker;
+        ReduceResources(new KeyValuePair<resource, int>(resource.food, workers.Count * foodEatenPerWorker));
         //sliderText.text = "Food Timer\n-" + workers.Count * foodEatenPerWorker + " food";
         StartCoroutine(FlashText(sliderText, 1.0f, "\n-" + workers.Count * foodEatenPerWorker + " food"));
         PrintResources();
@@ -924,7 +1172,9 @@ public class GameManager : MonoBehaviour
             {
                 CreateWorkers(currentResource, currentResource.tempWorkers);
             }
+
         highlightedBox.transform.position = new Vector2(-10, -10);
+        
         currentResource = null;
         UpdateHighlightedText(null);
         currentMenu = actionMenu.nothing;
@@ -951,6 +1201,8 @@ public class GameManager : MonoBehaviour
         redText.color = new Color(1.0f, 1.0f, 1.0f);
         redText.text = temp;
     }
+
+
 
     float GetBuildingDistance(GameObject[] buildings, Vector2 worker)
     {
@@ -1023,7 +1275,11 @@ public class GameManager : MonoBehaviour
 
     public void PrintResources()
     {
-        resourceText.text = "Food: " + resources[resource.food] + " \nOre: " + resources[resource.ore] + " \nWood: " + resources[resource.wood] + "\nStone: " + resources[resource.stone] + "\nMetal: " + resources[resource.metal] + "\nGold: " + resources[resource.gold];
+        resourceText.text = "";
+        foreach(KeyValuePair<resource, int> temp in resources)
+        {
+            resourceText.text += temp.Value + "\n";
+        }
     }
 
     void PrintWorkers()

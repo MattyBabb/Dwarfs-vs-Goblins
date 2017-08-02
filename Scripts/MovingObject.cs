@@ -38,7 +38,7 @@ public class MovingObject : MonoBehaviour
         sprite = GetComponent<SpriteRenderer>();
         boxCollider = GetComponent<BoxCollider2D>();
         rb2D = GetComponent<Rigidbody2D>();
-        anim.SetBool("Move", true);
+        //anim.SetBool("Move", true);
         currentMoveSpeed = moveSpeed;
         path = new List<Vector2>();
     }

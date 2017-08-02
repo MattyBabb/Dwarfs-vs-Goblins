@@ -51,8 +51,12 @@ public class Entity : MonoBehaviour {
                 colourArray[i] = fillColourRed;
             }
 
-            texture.SetPixels(colourArray);
-            texture.Apply();
+            if (texture.width > 0)
+            {
+                texture.SetPixels(colourArray);
+                texture.Apply();
+            }
+                
             GUI.Box(new Rect(currentPos, new Vector2(texture.width, texture.height)), texture, GUIStyle.none);
 
             texture2 = new Texture2D((int)((healthBarLength * width * currentHP) / maxHP), (int)(healthBarHeight * height));
@@ -61,8 +65,13 @@ public class Entity : MonoBehaviour {
             {
                 colourArray[i] = fillColourGreen;
             }
-            texture2.SetPixels(colourArray);
-            texture2.Apply();
+            
+            if(texture2.width > 0)
+            {
+                texture2.SetPixels(colourArray);
+                texture2.Apply();
+            }
+                
             GUI.Box(new Rect(currentPos, new Vector2(texture2.width, texture2.height)), texture2, GUIStyle.none);
         }
 

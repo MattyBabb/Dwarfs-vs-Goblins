@@ -20,7 +20,7 @@ public class TradeRoute : Worker
     int waitTime;
     List<Entity> attackers;
     int maxAttackers;
-    SpriteRenderer sprite;
+    //SpriteRenderer sprite;
 
     // Use this for initialization
     void Awake ()
@@ -47,6 +47,8 @@ public class TradeRoute : Worker
         deliverTypes = _deliverTypes;
         active = true;
         waitTime = wait;
+        delivering = true;
+        returning = false;
     }
 
     void ReduceResources()
@@ -115,7 +117,7 @@ public class TradeRoute : Worker
                 {
                     waitCounter = 0f;
                     delivering = true;
-                    thisMovingObject.MoveToLocation(start);
+                    thisMovingObject.MoveToLocation(destination);
                     //StartCoroutine(SmoothMovement(path, false));
                     ReduceResources();
                 }
@@ -133,7 +135,7 @@ public class TradeRoute : Worker
                         delivering = false;
                         returning = true;
                         //StartCoroutine(SmoothMovement(path, true));
-                        thisMovingObject.MoveToLocation(destination);
+                        thisMovingObject.MoveToLocation(start);
                     }
                 }
             }
