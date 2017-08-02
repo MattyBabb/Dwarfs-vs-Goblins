@@ -5,7 +5,7 @@ using System;
 
 public enum state
 {
-    movingToTarget, gathering, inBattle, cancel, movingHome, pathEnded, inBuilding, nothing 
+    movingToTarget, gathering, inBattle, cancel, movingHome, pathEnded, inBuilding, stunned, frozen, nothing 
 }
 
 public class Worker : MonoBehaviour
@@ -26,9 +26,11 @@ public class Worker : MonoBehaviour
     private resource heldResourceType;
     Entity thisEntity;
     protected MovingObject thisMovingObject;
+    protected SpriteRenderer sprite;
 
     void Awake()
     {
+        sprite = GetComponent<SpriteRenderer>();
         anim = GetComponent<Animator>();
         currentState = state.nothing;
         cancel = false;
@@ -81,6 +83,23 @@ public class Worker : MonoBehaviour
         anim.SetBool("Move", false);
     }
 
+    public void SpriteEnabled(bool enable)
+    {
+        sprite.enabled = enable;
+    }
+
+    public void BecomeFrozen(float duration)
+    {
+        //play frozen animation
+        currentState = state.frozen;
+        Invoke("ResetState", duration);
+    }
+
+    public void ResetState()
+    {
+        currentState = state.nothing;
+    }
+
     private void Gather()
     {
         if(targetResource.resourceType != resource.building)
@@ -110,6 +129,37 @@ public class Worker : MonoBehaviour
         heldResourceAmount = 0;
     }
 
+    GameObject GetClosestResourceDistance(string resourceName, out float distance)
+    {
+        GameObject[] gos = GameObject.FindGameObjectsWithTag("Resource");
+        List<GameObject> egos = new List<GameObject>();
+        GameObject closest = null;
+        distance = Mathf.Infinity;
+        Vector3 position = transform.position;
+
+        foreach (GameObject ex in gos)
+        {
+            if (ex.GetComponent<ConstructionSite>() != null)
+            {
+                if(ex.GetComponent<ConstructionSite>().name == resourceName)
+                    egos.Add(ex);
+            }
+        }
+
+        foreach (GameObject go in egos)
+        {
+            Vector3 diff = go.transform.position - position;
+            float curDistance = diff.sqrMagnitude;
+            if (curDistance < distance && distance > 0)
+            {
+                closest = go;
+                distance = curDistance;
+            }
+        }
+
+        return closest;
+    }
+
     public void Cancel()
     {
         //StopAllCoroutines();
@@ -122,10 +172,10 @@ public class Worker : MonoBehaviour
         anim.SetBool("Move", true);
         if (targetResource != null)
         {
-            if(targetResource.name == "House")
-            {
-                destroy = true;
-            }    
+            //if(targetResource.name == "House")
+            //{
+            //    destroy = true;
+            //}    
             targetResource.RemoveWorkerFromSlot(this);
             
         }
@@ -174,7 +224,29 @@ public class Worker : MonoBehaviour
                 {
                     timer = 0;
                     gatherCounter = 1;
-                    Cancel();
+                    if (targetResource.resourceType == resource.building)
+                    {
+                        float distance;
+                        GameObject closest = GetClosestResourceDistance("Wall", out distance);
+                        if (distance < 2)
+                        {
+                            Resources newTarget = closest.GetComponent<Resources>();
+                            newTarget.path = new List<Vector2>();
+                            newTarget.path.Add(this.transform.position);
+                            newTarget.path.Add(newTarget.transform.position);
+                            Init(closest.GetComponent<Resources>());
+                            newTarget.workerSlots.Add(this);
+                            newTarget.tempWorkers++;
+                        }
+                        else
+                        {
+                            Cancel();
+                        }
+                    }
+                    else
+                    {
+                        Cancel();
+                    }
                 }
                 else
                 {
@@ -220,11 +292,11 @@ public class Worker : MonoBehaviour
                     destroy = true;
                     GameManager.instance.ProcessWorkers();
                 }
-                else if (targetResource.resourcesRemaining <= 0)
-                {
-                    destroy = true;
-                    GameManager.instance.ProcessWorkers();
-                }
+                //else if (targetResource.resourcesRemaining <= 0)
+                //{
+                //    destroy = true;
+                //    GameManager.instance.ProcessWorkers();
+                //}
                 else //if ((new Vector3(path[path.Count - 1].x, path[path.Count - 1].y, 0) - transform.position).sqrMagnitude < float.Epsilon)
                 {
                     thisMovingObject.MoveOnPath(targetResource.path, false);
@@ -238,11 +310,11 @@ public class Worker : MonoBehaviour
             {
                 GameManager.instance.ProcessWorkers();
             }
-            else if (targetResource == null)
-            {
-                Cancel();
-                destroy = true;
-            }
+            //else if (targetResource == null)
+            //{
+            //    Cancel();
+            //    destroy = true;
+            //}
         }
     }
 }
